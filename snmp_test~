@@ -1,0 +1,239 @@
+#!/bin/sh
+
+if [ "$1" != "" ]; then
+    IPv4_HOST=$1
+else
+    IPv4_HOST=0.0.0.0
+fi
+
+if [ "$2" != "" ]; then
+    IPv6_HOST=$2
+else
+    IPv6_HOST=udp6:[::1]
+fi
+
+[ -z "$SNMPD_CONF" ] && SNMPD_CONF=snmpd.conf
+[ -z "$SNMPTRAPD_CONF" ] && SNMPTRAPD_CONF=snmptrapd.conf
+[ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.182
+
+SNMPD_LOG=snmpd.log
+SNMPD_PID=snmpd.pid
+SNMPD_PORT=161
+
+SNMPTRAPD_LOG=snmptrapd.log
+SNMPTRAPD_PID=snmptrapd.pid
+SNMPTRAPD_PORT=162
+
+COMMUNITY=public
+USER=awallin
+PW=kalle123
+
+HEAD="head -3"
+NOTE='echo -e \n--- '
+
+function snmp_kill () {
+    # Kill all running snmp servers
+    killall snmpd
+    killall snmptrapd
+    sleep 1
+}
+
+IPv6_LO=2001:1b70:82a8:90:e085::10
+IPv6_ETH0=2001:1b70:82a8:90:1284:31:0:2
+IPv6_REMOTE_ETH0=2001:1b70:82a8:90:1284:31:0:4
+
+function prepare_remote () {
+    if [ ! -e prepare_remote ]; then
+	$NOTE "Preparing ip remote"
+	ssh $REMOTE_IPv4 ifconfig lo inet6 add $IPv6_REMOTE_ETH0/128
+	ssh $REMOTE_IPv4 ip -6 route
+	touch prepare_remote
+    else
+	$NOTE "remote ip already prepared"
+    fi
+    ssh $REMOTE_IPv4 ifconfig
+    ssh $REMOTE_IPv4 ip -6 route
+}
+
+function prepare_ip () {
+    if [ ! -e prepare_ip ]; then
+	$NOTE "Preparing ip addresses"
+	ifconfig lo   inet6 add $IPv6_LO/128
+	ifconfig eth0 inet6 add $IPv6_ETH0/80
+	touch prepare_ip
+    else
+	$NOTE "ip addresses already prepared"
+    fi
+    ifconfig
+}
+
+function prepare_user () {
+    if [ ! -e prepare_user ]; then
+	$NOTE "Preparing user $USER"
+	net-snmp-create-v3-user -A $PW -X $PW -a MD5 -x DES $USER
+	touch prepare_user
+    else
+	$NOTE "User already prepared"
+    fi
+}
+
+function show_logs () {
+    $NOTE "$SNMPD_LOG"
+    cat $SNMPD_LOG
+    $NOTE "$SNMPTRAPD_LOG"
+    cat $SNMPTRAPD_LOG
+}
+
+
+function snmp_check_servers () {
+    # check if the servers where started
+    $NOTE "ps snmp"
+    ps -ef | grep snmp
+    $NOTE "Check open ports"
+    netstat -tulpn | grep snmp
+    show_logs
+}
+
+function snmp_start () {
+    #snmptrapd_debug=-Dtrap,transport,usm
+    #snmpd_debug=-Dtrap,transport,usm,trapsess,netsnmp_udp6,netsnmp_sockaddr_in6,snmpd_ports,socket:option,udpbase:sendto,netsnmp_udp,netsnmp_ipv6
+    #snmpd_debug=-D
+    
+    # Start snmp servers
+    SNMPD_SERVERS=$IPv4_HOST:$SNMPD_PORT,udp6:[$IPv6_LO]:$SNMPD_PORT,$IPv6_HOST:$SNMPD_PORT
+    
+    /usr/sbin/snmptrapd $snmptrapd_debug -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID udp:$SNMPTRAPD_PORT,udp6:$SNMPTRAPD_PORT
+    /usr/sbin/snmpd $snmpd_debug $mibs -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $SNMPD_SERVERS
+}
+
+function snmp_walk () {
+    host=$1
+    protocol_version=$2
+    community=$3
+    user=$4
+    pw=$5
+
+    $NOTE "WALK $host v$protocol_version"
+    if [ $protocol_version == "3" ]; then
+	snmpwalk -v 3 -a MD5 -A $pw -l authNoPriv -u $user $host . | $HEAD
+    else
+	snmpwalk -v $protocol_version -c $community $host | $HEAD
+    fi
+}
+
+function snmp_walk_ip ()
+{
+    host=$1
+
+#    snmp_walk $host 1  $COMMUNITY
+    snmp_walk $host 2c $COMMUNITY
+#    snmp_walk $host 3  $COMMUNITY $USER $PW 
+}
+
+
+function snmp_get () {
+    host=$1
+    protocol_version=$2
+    community=$3
+    user=$4
+    pw=$5
+
+    $NOTE "GET $host v$protocol_version"
+    if [ $protocol_version == "3" ]; then
+	snmpget -v 3 -a MD5 -A $pw -l authNoPriv -u $user $host system.sysDescr.0
+    else
+	snmpget -v $protocol_version -c $community $host system.sysDescr.0
+    fi
+}
+
+function snmp_get_ip ()
+{
+    host=$1
+
+#    snmp_get $host 1  $COMMUNITY
+    snmp_get $host 2c $COMMUNITY
+#    snmp_get $host 3  $COMMUNITY $USER $PW 
+}
+
+function snmp_trap () {
+    host=$1
+    protocol_version=$2
+    community=$3
+    user=$4
+    pw=$5
+
+    trap_oid="NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatNotification"
+    oid=netSnmpExampleHeartbeatRate
+    #trap_oid=SNMPv2-MIB::snmpTrapOID.0
+    #oid=coldStart.0
+
+    #debug=-Ddumph_send,dumpv_send,usm
+    
+    $NOTE "TRAP $host v$protocol_version"
+    if [ $protocol_version == "1" ]; then
+	snmptrap $debug -v $protocol_version -c $community $host $trap_oid ""  6 17 ""  $oid i 111
+    elif [ $protocol_version == "2c" ]; then
+	snmptrap $debug -v $protocol_version -c $community $host "" $trap_oid $oid i 222
+    else
+	snmptrap $debug -e 80001f8880523983647b8b0357 -v $protocol_version -c $community -a MD5 -A $pw -x AES -X $pw -l authPriv -u $user $host "" $trap_oid $oid i 333
+	snmpinform -v $protocol_version -u $user -a MD5 -A $pw -l authNoPriv $host "" $oid
+    fi
+}
+
+function snmp_trap_ip ()
+{
+    host=$1
+
+#    snmp_trap $host 1  $COMMUNITY
+    snmp_trap $host 2c $COMMUNITY
+#    snmp_trap $host 3  $COMMUNITY $USER $PW 
+}
+
+TCPDUMP_CAP=tcpdump.cap
+function tcpdump_capture ()
+{
+    interface=$1
+    rotate_seconds=$2
+    filecount=1
+
+    tcpdump -G $rotate_seconds -W $filecount -w $TCPDUMP_CAP -i $interface &
+    sleep 1
+}
+
+function tcpdump_read ()
+{
+    sleep $1
+    # workaround: need a last package to close the tcpdump capture
+    ping6 -c 1 ::1 >/dev/null
+#    sleep 1
+    
+    tcpdump -T snmp -r $TCPDUMP_CAP port $SNMPD_PORT
+}
+
+
+###########################################
+# main
+snmp_kill
+prepare_user
+prepare_ip
+prepare_remote
+exit
+
+
+snmp_start
+date
+
+tcpdump_capture lo 4
+snmp_get_ip $IPv4_HOST:$SNMPD_PORT
+snmp_get_ip $IPv6_HOST:$SNMPD_PORT
+snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
+tcpdump_read 4
+
+#snmp_walk_ip $IPv4_HOST:$SNMPD_PORT
+#snmp_walk_ip $IPv6_HOST:$SNMPD_PORT
+
+#snmp_trap_ip $IPv4_HOST:$SNMPTRAPD_PORT
+#snmp_trap_ip $IPv6_HOST:$SNMPTRAPD_PORT
+
+sleep 1
+snmp_check_servers
