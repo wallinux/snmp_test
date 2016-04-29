@@ -24,6 +24,8 @@ SNMPTRAPD_LOG=snmptrapd.log
 SNMPTRAPD_PID=snmptrapd.pid
 SNMPTRAPD_PORT=162
 
+#PROTOCOLS="1 2c 3"
+PROTOCOLS="2c"
 COMMUNITY=public
 USER=awallin
 PW=kalle123
@@ -45,14 +47,15 @@ IPv6_REMOTE_ETH0=2001:1b70:82a8:90:1284:31:0:4
 function prepare_remote () {
     if [ ! -e prepare_remote ]; then
 	$NOTE "Preparing ip remote"
-	ssh $REMOTE_IPv4 ifconfig lo inet6 add $IPv6_REMOTE_ETH0/128
-	ssh $REMOTE_IPv4 ip -6 route
+	ssh $REMOTE_IPv4 ifconfig eth0 inet6 add $IPv6_REMOTE_ETH0/128
+	ssh $REMOTE_IPv4 ip -6 route add default dev eth0
+	ssh $REMOTE_IPv4 ip -6 route add via $IPv6_ETH0 $IPv6_LO
 	touch prepare_remote
     else
 	$NOTE "remote ip already prepared"
     fi
-    ssh $REMOTE_IPv4 ifconfig
-    ssh $REMOTE_IPv4 ip -6 route
+    #ssh $REMOTE_IPv4 ifconfig
+    #ssh $REMOTE_IPv4 ip -6 route
 }
 
 function prepare_ip () {
@@ -64,7 +67,8 @@ function prepare_ip () {
     else
 	$NOTE "ip addresses already prepared"
     fi
-    ifconfig
+    #ifconfig
+    #ip -6 route
 }
 
 function prepare_user () {
@@ -125,9 +129,9 @@ function snmp_walk_ip ()
 {
     host=$1
 
-#    snmp_walk $host 1  $COMMUNITY
-    snmp_walk $host 2c $COMMUNITY
-#    snmp_walk $host 3  $COMMUNITY $USER $PW 
+    for p in $PROTOCOLS; do
+	snmp_walk $host $p  $COMMUNITY $USER $PW
+    done
 }
 
 
@@ -150,11 +154,12 @@ function snmp_get_ip ()
 {
     host=$1
 
-#    snmp_get $host 1  $COMMUNITY
-    snmp_get $host 2c $COMMUNITY
-#    snmp_get $host 3  $COMMUNITY $USER $PW 
+    for p in $PROTOCOLS; do
+	snmp_get $host $p $COMMUNITY $USER $PW
+    done;
 }
 
+TCPDUMP_REMOTE_CAP=tcpdump_remote.cap
 function remote_snmp_get () {
     host=$1
     protocol_version=$2
@@ -162,21 +167,24 @@ function remote_snmp_get () {
     user=$4
     pw=$5
 
-    $NOTE "GET $host v$protocol_version"
+    $NOTE "REMOTE GET $host v$protocol_version"
+    ssh -n -f $REMOTE_IPv4 "nohup tcpdump -G 10 -W 1 -i any -w $TCPDUMP_REMOTE_CAP >/dev/null 2>&1 &"
     if [ $protocol_version == "3" ]; then
-	ssh $REMOTE_IPv4 snmpget -v 3 -a MD5 -A $pw -l authNoPriv -u $user $host system.sysDescr.0
+	ssh $REMOTE_IPv4 "snmpget -v 3 -a MD5 -A $pw -l authNoPriv -u $user $host system.sysDescr.0"
     else
-	ssh $REMOTE_IPv4 snmpget -v $protocol_version -c $community $host system.sysDescr.0
+	ssh $REMOTE_IPv4 "snmpget -v $protocol_version -c $community $host system.sysDescr.0"
     fi
+    sleep 4
+    ssh $REMOTE_IPv4 "tcpdump -T snmp -r $TCPDUMP_REMOTE_CAP port $SNMPD_PORT"
 }
 
 function remote_snmp_get_ip ()
 {
     host=$1
 
-#    remote_snmp_get $host 1  $COMMUNITY
-    remote_snmp_get $host 2c $COMMUNITY
-#    remote_snmp_get $host 3  $COMMUNITY $USER $PW 
+    for p in $PROTOCOLS; do
+	remote_snmp_get $host $p $COMMUNITY $USER $PW
+    done;
 }
 
 
@@ -209,9 +217,9 @@ function snmp_trap_ip ()
 {
     host=$1
 
-#    snmp_trap $host 1  $COMMUNITY
-    snmp_trap $host 2c $COMMUNITY
-#    snmp_trap $host 3  $COMMUNITY $USER $PW 
+    for p in $PROTOCOLS; do
+	snmp_trap $host $p  $COMMUNITY $USER $PW
+    done
 }
 
 TCPDUMP_CAP=tcpdump.cap
@@ -246,14 +254,14 @@ snmp_start
 date
 
 tcpdump_capture lo 4
-snmp_get_ip $IPv4_HOST:$SNMPD_PORT
+#snmp_get_ip $IPv4_HOST:$SNMPD_PORT
 snmp_get_ip $IPv6_HOST:$SNMPD_PORT
 snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
 snmp_get_ip udp6:[$IPv6_ETH0]:$SNMPD_PORT
 tcpdump_read 4
 
 remote_snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
-remote_snmp_get_ip udp6:[$IPv6_ETH0]:$SNMPD_PORT
+#remote_snmp_get_ip udp6:[$IPv6_ETH0]:$SNMPD_PORT
 
 #snmp_walk_ip $IPv4_HOST:$SNMPD_PORT
 #snmp_walk_ip $IPv6_HOST:$SNMPD_PORT
@@ -261,5 +269,5 @@ remote_snmp_get_ip udp6:[$IPv6_ETH0]:$SNMPD_PORT
 #snmp_trap_ip $IPv4_HOST:$SNMPTRAPD_PORT
 #snmp_trap_ip $IPv6_HOST:$SNMPTRAPD_PORT
 
-sleep 1
-snmp_check_servers
+#sleep 1
+#snmp_check_servers
