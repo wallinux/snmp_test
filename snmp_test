@@ -1,21 +1,24 @@
-#!/bin/sh
+#!/bin/bash
 
-if [ "$1" != "" ]; then
-    IPv4_HOST=$1
-else
-    IPv4_HOST=0.0.0.0
-fi
+[ -z "$IPv4" ] && IPv4=yes
+[ -z "$IPv6" ] && IPv6=yes
+[ -z "$DTLSUDP" ] && DTLSUDP=no
+[ -z "$REMOTE" ] && REMOTE=no
+[ -z "$TCPDUMP" ] && TCPDUMP=no
+[ -z "$TRACE" ] && TRACE=yes
+[ -z "$SHOWLOGS" ] && SHOWLOGS=yes
+[ -z "$DEBUG" ] && DEBUG=no
 
-if [ "$2" != "" ]; then
-    IPv6_HOST=$2
-else
-    IPv6_HOST=udp6:[::1]
-fi
-
+[ -z "$IPv4_HOST" ] && IPv4_HOST=0.0.0.0
+[ -z "$IPv6_HOST" ] && IPv6_HOST=udp6:[::1]
 [ -z "$SNMPD_CONF" ] && SNMPD_CONF=snmpd.conf
 [ -z "$SNMPTRAPD_CONF" ] && SNMPTRAPD_CONF=snmptrapd.conf
 [ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.182
+#SNMP_PROTOCOLS="1 2c 3"
+[ -z "$SNMP_PROTOCOLS" ] && SNMP_PROTOCOLS="2c"
+[ -z "$SNMP_COMMUNITY" ] && SNMP_COMMUNITY=public
 
+#####################################################################
 SNMPD_LOG=snmpd.log
 SNMPD_PID=snmpd.pid
 SNMPD_PORT=161
@@ -24,25 +27,23 @@ SNMPTRAPD_LOG=snmptrapd.log
 SNMPTRAPD_PID=snmptrapd.pid
 SNMPTRAPD_PORT=162
 
-#PROTOCOLS="1 2c 3"
-PROTOCOLS="2c"
-COMMUNITY=public
 USER=awallin
 PW=kalle123
+
+IPv6_LO=2001:1b70:82a8:90:e085::10
+IPv6_ETH0=2001:1b70:82a8:90:1284:31:0:2
+IPv6_REMOTE_ETH0=2001:1b70:82a8:90:1284:31:0:4
 
 HEAD="head -3"
 NOTE='echo -e \n--- '
 
+#####################################################################
 function snmp_kill () {
     # Kill all running snmp servers
     killall snmpd
     killall snmptrapd
     sleep 1
 }
-
-IPv6_LO=2001:1b70:82a8:90:e085::10
-IPv6_ETH0=2001:1b70:82a8:90:1284:31:0:2
-IPv6_REMOTE_ETH0=2001:1b70:82a8:90:1284:31:0:4
 
 function prepare_remote () {
     if [ ! -e prepare_remote ]; then
@@ -54,8 +55,6 @@ function prepare_remote () {
     else
 	$NOTE "remote ip already prepared"
     fi
-    #ssh $REMOTE_IPv4 ifconfig
-    #ssh $REMOTE_IPv4 ip -6 route
 }
 
 function prepare_ip () {
@@ -67,8 +66,6 @@ function prepare_ip () {
     else
 	$NOTE "ip addresses already prepared"
     fi
-    #ifconfig
-    #ip -6 route
 }
 
 function prepare_user () {
@@ -82,32 +79,50 @@ function prepare_user () {
 }
 
 function show_logs () {
-    $NOTE "$SNMPD_LOG"
-    cat $SNMPD_LOG
-    $NOTE "$SNMPTRAPD_LOG"
-    cat $SNMPTRAPD_LOG
+    if [ "$SHOWLOGS" == yes ]; then
+	$NOTE "$SNMPD_LOG"
+	cat $SNMPD_LOG
+	$NOTE "$SNMPTRAPD_LOG"
+	cat $SNMPTRAPD_LOG
+    fi
 }
 
 
 function snmp_check_servers () {
     # check if the servers where started
-    $NOTE "ps snmp"
-    ps -ef | grep snmp
-    $NOTE "Check open ports"
-    netstat -tulpn | grep snmp
+    if [ "$TRACE" == yes ]; then
+	$NOTE "ps snmp"
+	ps -ef | grep snmp
+	$NOTE "Check open ports"
+	netstat -tulpn | grep snmp
+    fi
     show_logs
 }
 
 function snmp_start () {
-    #snmptrapd_debug=-Dtrap,transport,usm
-    #snmpd_debug=-Dtrap,transport,usm,trapsess,netsnmp_udp6,netsnmp_sockaddr_in6,snmpd_ports,socket:option,udpbase:sendto,netsnmp_udp,netsnmp_ipv6
-    #snmpd_debug=-D
-    
+    if [ "$DEBUG" == yes ]; then
+	snmptrapd_debug=-Dtrap,transport,usm
+	snmpd_debug=-Dtrap,transport,usm,trapsess,netsnmp_udp6,netsnmp_sockaddr_in6,snmpd_ports,socket:option,udpbase:sendto,netsnmp_udp,netsnmp_ipv6
+	#snmpd_debug=-D
+
+	SHOWLOGS=yes
+    fi
+
     # Start snmp servers
-    SNMPD_SERVERS=udp:0.0.0.0:$SNMPD_PORT,udp6:[$IPv6_LO]:$SNMPD_PORT,udp6:[::]:$SNMPD_PORT
-    
+    snmpd_servers=()
+    if [ "$IPv4" == "yes" ]; then
+	snmpd_servers+=("udp:0.0.0.0:$SNMPD_PORT")
+    fi
+    if [ "$IPv6" == "yes" ]; then
+	snmpd_servers+=("udp6:[$IPv6_LO]:$SNMPD_PORT")
+	snmpd_servers+=("udp6:[::]:$SNMPD_PORT")
+    fi
+    if [ "$DTLSUDP" == "yes" ]; then
+	snmpd_servers+=('dtlsudp:0.0.0.0:9161')
+	snmpd_servers+=('dtlsudp:[::]:9161')
+    fi
     /usr/sbin/snmptrapd $snmptrapd_debug -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID udp:$SNMPTRAPD_PORT,udp6:$SNMPTRAPD_PORT
-    /usr/sbin/snmpd $snmpd_debug $mibs -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $SNMPD_SERVERS
+    /usr/sbin/snmpd $snmpd_debug $mibs -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID ${snmpd_servers[@]}
 }
 
 function snmp_walk () {
@@ -129,8 +144,8 @@ function snmp_walk_ip ()
 {
     host=$1
 
-    for p in $PROTOCOLS; do
-	snmp_walk $host $p  $COMMUNITY $USER $PW
+    for p in $SNMP_PROTOCOLS; do
+	snmp_walk $host $p $SNMP_COMMUNITY $USER $PW
     done
 }
 
@@ -154,8 +169,8 @@ function snmp_get_ip ()
 {
     host=$1
 
-    for p in $PROTOCOLS; do
-	snmp_get $host $p $COMMUNITY $USER $PW
+    for p in $SNMP_PROTOCOLS; do
+	snmp_get $host $p $SNMP_COMMUNITY $USER $PW
     done;
 }
 
@@ -182,8 +197,8 @@ function remote_snmp_get_ip ()
 {
     host=$1
 
-    for p in $PROTOCOLS; do
-	remote_snmp_get $host $p $COMMUNITY $USER $PW
+    for p in $SNMP_PROTOCOLS; do
+	remote_snmp_get $host $p $SNMP_COMMUNITY $USER $PW
     done;
 }
 
@@ -201,7 +216,7 @@ function snmp_trap () {
     #oid=coldStart.0
 
     #debug=-Ddumph_send,dumpv_send,usm
-    
+
     $NOTE "TRAP $host v$protocol_version"
     if [ $protocol_version == "1" ]; then
 	snmptrap $debug -v $protocol_version -c $community $host $trap_oid ""  6 17 ""  $oid i 111
@@ -217,8 +232,8 @@ function snmp_trap_ip ()
 {
     host=$1
 
-    for p in $PROTOCOLS; do
-	snmp_trap $host $p  $COMMUNITY $USER $PW
+    for p in $SNMP_PROTOCOLS; do
+	snmp_trap $host $p $SNMP_COMMUNITY $USER $PW
     done
 }
 
@@ -238,30 +253,41 @@ function tcpdump_read ()
     sleep $1
     # workaround: need a last package to close the tcpdump capture
     ping6 -c 1 ::1 >/dev/null
-    
+
     tcpdump -T snmp -r $TCPDUMP_CAP port $SNMPD_PORT
 }
-
 
 ###########################################
 # main
 snmp_kill
 prepare_user
 prepare_ip
-prepare_remote
+if [ "$REMOTE" == "yes" ]; then
+   prepare_remote
+fi
 
 snmp_start
-date
+$NOTE $(date)
 
-tcpdump_capture lo 4
-#snmp_get_ip $IPv4_HOST:$SNMPD_PORT
-snmp_get_ip $IPv6_HOST:$SNMPD_PORT
-snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
-snmp_get_ip udp6:[$IPv6_ETH0]:$SNMPD_PORT
-tcpdump_read 4
+if [ "$TCPDUMP" == "yes" ]; then
+    tcpdump_capture lo 4
+fi
+if [ "$IPv4" == "yes" ]; then
+    snmp_get_ip $IPv4_HOST:$SNMPD_PORT
+fi
+if [ "$IPv6" == "yes" ]; then
+    snmp_get_ip $IPv6_HOST:$SNMPD_PORT
+    snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
+    snmp_get_ip udp6:[$IPv6_ETH0]:$SNMPD_PORT
+fi
+if [ "$TCPDUMP" == "yes" ]; then
+    tcpdump_read 4
+fi
 
-remote_snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
-#remote_snmp_get_ip udp6:[$IPv6_ETH0]:$SNMPD_PORT
+if [ "$REMOTE" == "yes" ]; then
+    remote_snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
+    remote_snmp_get_ip udp6:[$IPv6_ETH0]:$SNMPD_PORT
+fi
 
 #snmp_walk_ip $IPv4_HOST:$SNMPD_PORT
 #snmp_walk_ip $IPv6_HOST:$SNMPD_PORT
@@ -270,4 +296,4 @@ remote_snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
 #snmp_trap_ip $IPv6_HOST:$SNMPTRAPD_PORT
 
 #sleep 1
-#snmp_check_servers
+snmp_check_servers
