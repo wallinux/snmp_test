@@ -1,11 +1,14 @@
 #!/bin/bash
 
+[ -z "$TCPDUMP" ] && TCPDUMP=no
+#HOST=[::1]
+[ -z "$HOST" ] && HOST=127.0.0.1
+[ -z "$PORT" ] && PORT=10161
+
 TESTDIR=/tmp/test
 CERTDIR=/tmp/cert
-NET_SNMP_CERT=net-snmp-cert
+
 TESTUSER=testuser
-HOST=127.0.0.1
-PORT=10161
 SERVER=dtlsudp:$HOST:$PORT
 OID=.1.3.6.1.2.1.1.6.0
 
@@ -16,11 +19,36 @@ SNMPD_PID=$TESTDIR/snmpd.pid
 SNMP_CONF=$TESTDIR/snmp.conf
 
 NOTE='echo -e \n--- '
+NET_SNMP_CERT=net-snmp-cert
 
 #SNMP_DEBUG=-Ddtlsudp -d
 #SNMP_DEBUG=-d
 SNMPGET="snmpget $SNMP_DEBUG -On"
 SNMPSET="snmpset $SNMP_DEBUG -On"
+
+TCPDUMP_CAP=tcpdump.cap
+function tcpdump_capture ()
+{
+    interface=$1
+    rotate_seconds=$2
+    filecount=1
+
+    set -x
+    tcpdump -G $rotate_seconds -W $filecount -w $TCPDUMP_CAP -i $interface &
+    set +x
+    sleep 1
+}
+
+function tcpdump_read ()
+{
+    sleep $1
+    # workaround: need a last package to close the tcpdump capture
+    ping6 -c 1 ::1 >/dev/null
+
+    set -x
+    tcpdump -T snmp -r $TCPDUMP_CAP port $PORT
+    set +x
+}
 
 function create_cert ()
 {
@@ -80,7 +108,6 @@ function export_env ()
 
     export SNMP_PERSISTENT_DIR=$TESTDIR/persist
     export SNMPCONFPATH=$TESTDIR:$CERTDIR:$SNMP_PERSISTENT_DIR
-    #export MIBDIRS=/usr/share/snmp/mibs
     mkdir -p $SNMP_PERSISTENT_DIR
 }
 
@@ -130,16 +157,20 @@ create_snmp_conf
 export_env
 start_snmpd
 
+if [ "$TCPDUMP" == "yes" ]; then
+    tcpdump_capture lo 4
+fi
 test1
+if [ "$TCPDUMP" == "yes" ]; then
+    tcpdump_read 4
+fi
+
 test2
 test3
 
 exit
 
 
-snmpset -T trust_cert=F6:3D:4F:04:6E:95:DA:F7:2D:E6:A8:ED:EF:61:73:A5:85:FB:AF:89 -T their_hostname=a.b.example.com -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0 s 'hostnameIdentity'
-snmpget -T trust_cert=F6:3D:4F:04:6E:95:DA:F7:2D:E6:A8:ED:EF:61:73:A5:85:FB:AF:89 -T their_hostname=a.b.example.com -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0
-# not ok 5 - found 0 copies of 'STRING: 'hostnameIdentity'' in output (/tmp/snmp-test-T111DtlsServer_simple-23621/output-simple_run23621-9); expected 1
 # Outputfile: /tmp/snmp-test-T111DtlsServer_simple-23621/output-simple_run23621-9
 
 snmpset -T their_hostname=a.b.example.com -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0 s 'noTrustCACert'
