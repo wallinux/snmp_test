@@ -9,6 +9,9 @@ TESTDIR=/tmp/test
 CERTDIR=/tmp/cert
 
 TESTUSER=testuser
+TESTHOSTNAME=e.prime.com
+TESTCA=ca.prime.org
+
 SERVER=dtlsudp:$HOST:$PORT
 OID=.1.3.6.1.2.1.1.6.0
 
@@ -54,8 +57,8 @@ function create_cert ()
 {
     $NOTE $FUNCNAME
     if [ ! -d $CERTDIR ]; then
-	$NET_SNMP_CERT genca -I --cn ca-net-snmp.org -C $CERTDIR
-	$NET_SNMP_CERT gencert -I -t snmpd --with-ca ca-net-snmp.org --cn a.b.example.com -C $CERTDIR
+	$NET_SNMP_CERT genca -I --cn $TESTCA -C $CERTDIR
+	$NET_SNMP_CERT gencert -I -t snmpd --with-ca $TESTCA --cn $TESTHOSTNAME -C $CERTDIR
 	$NET_SNMP_CERT gencert -I -t snmpapp --cn $TESTUSER -C $CERTDIR
 	chmod 755 $CERTDIR/tls $CERTDIR/tls/ca-certs $CERTDIR/tls/certs
 	chmod a+r $CERTDIR/tls/ca-certs/* $CERTDIR/tls/certs/*
@@ -68,7 +71,7 @@ function get_cert ()
 
     serverCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpd -C $CERTDIR)
     appCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpapp -C $CERTDIR)
-    caCert=$($NET_SNMP_CERT showcas --fingerprint --brief ca-net-snmp.org -C $CERTDIR)
+    caCert=$($NET_SNMP_CERT showcas --fingerprint --brief $TESTCA -C $CERTDIR)
 
     echo serverCert: $serverCert
     echo appCert:    $appCert
@@ -142,11 +145,14 @@ function test2 ()
 
 function test3 ()
 {
-    $NOTE $FUNCNAME trust_cert=$caCert -T their_hostname=a.b.example.com
+    $NOTE $FUNCNAME trust_cert=$caCert -T their_hostname=$TESTHOSTNAME
 
-    $SNMPSET -T trust_cert=$caCert -T their_hostname=a.b.example.com $SERVER $OID s 'hostnameIdentity'
-    $SNMPGET -T trust_cert=$caCert -T their_hostname=a.b.example.com $SERVER $OID
+    $SNMPSET -T trust_cert=$caCert -T their_hostname=$TESTHOSTNAME $SERVER $OID s 'hostnameIdentity'
+    $SNMPGET -T trust_cert=$caCert -T their_hostname=$TESTHOSTNAME $SERVER $OID
 }
+
+######################################################################
+# main
 
 killall snmpd
 
@@ -167,31 +173,3 @@ fi
 
 test2
 test3
-
-exit
-
-
-# Outputfile: /tmp/snmp-test-T111DtlsServer_simple-23621/output-simple_run23621-9
-
-snmpset -T their_hostname=a.b.example.com -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0 s 'noTrustCACert'
-snmpget -T their_hostname=a.b.example.com -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0
-# ok 6 - found 0 copies of 'noTrustCACert' in output (/tmp/snmp-test-T111DtlsServer_simple-23621/output-simple_run23621-11)
-snmpset -T their_hostname=a.b.example.co -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0 s 'incorrectNameA.B.Example.Co'
-snmpget -T their_hostname=a.b.example.co -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0
-# ok 7 - found 0 copies of 'incorrectNameA.B.Example.Co' in output (/tmp/snmp-test-T111DtlsServer_simple-23621/output-simple_run23621-13)
-snmpset -T their_hostname=a.b.example.comt -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0 s 'incorrectNameA.B.Example.Comt'
-snmpget -T their_hostname=a.b.example.comt -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0
-# ok 8 - found 0 copies of 'incorrectNameA.B.Example.Comt' in output (/tmp/snmp-test-T111DtlsServer_simple-23621/output-simple_run23621-15)
-snmpset -T trust_cert=F6:3D:4F:04:6E:95:DA:F7:2D:E6:A8:ED:EF:61:73:A5:85:FB:AF:89 -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0 s 'certWithoutHost'
-snmpget -T trust_cert=F6:3D:4F:04:6E:95:DA:F7:2D:E6:A8:ED:EF:61:73:A5:85:FB:AF:89 -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0
-# ok 9 - found 0 copies of 'certWithoutHost' in output (/tmp/snmp-test-T111DtlsServer_simple-23621/output-simple_run23621-17)
-snmpset -T trust_cert=F6:3D:4F:04:6E:95:DA:F7:2D:E6:A8:ED:EF:61:73:A5:85:FB:AF:89 -T their_hostname=*.b.example.com -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0 s 'wildcardMatch'
-snmpget -T trust_cert=F6:3D:4F:04:6E:95:DA:F7:2D:E6:A8:ED:EF:61:73:A5:85:FB:AF:89 -T their_hostname=*.b.example.com -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0
-# not ok 10 - found 0 copies of 'STRING: 'wildcardMatch'' in output (/tmp/snmp-test-T111DtlsServer_simple-23621/output-simple_run23621-19); expected 1
-# Outputfile: /tmp/snmp-test-T111DtlsServer_simple-23621/output-simple_run23621-19
-snmpset -T trust_cert=F6:3D:4F:04:6E:95:DA:F7:2D:E6:A8:ED:EF:61:73:A5:85:FB:AF:89 -T their_hostname=*.example.com -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0 s 'noDoubleWildcard'
-snmpget -T trust_cert=F6:3D:4F:04:6E:95:DA:F7:2D:E6:A8:ED:EF:61:73:A5:85:FB:AF:89 -T their_hostname=*.example.com -On -d dtlsudp:127.0.0.1:8811 .1.3.6.1.2.1.1.6.0
-# ok 11 - found 0 copies of 'noDoubleWildcard' in output (/tmp/snmp-test-T111DtlsServer_simple-23621/output-simple_run23621-21)
-kill -TERM 23755 (/tmp/snmp-test-T111DtlsServer_simple-23621/snmpd.pid)
-kill -TERM 23755 (/tmp/snmp-test-T111DtlsServer_simple-23621/snmpd.pid)
-# ok 12 - got to FINISHED
