@@ -32,6 +32,8 @@ SNMPTRAPD_PORT=162
 USER=awallin
 PW=kalle123
 
+IPv4_LO=172.16.1.100
+IPv4_DEV0=128.224.95.181
 IPv6_LO=2001:1b70:82a8:90:e085::10
 IPv6_DEV0=2001:1b70:82a8:90:1284:31:0:2
 IPv6_REMOTE_DEV0=2001:1b70:82a8:90:1284:31:0:4
@@ -53,6 +55,7 @@ function prepare_remote () {
 	ssh $REMOTE_IPv4 ifconfig $IPREMOTEDEV0 inet6 add $IPv6_REMOTE_DEV0/128
 	ssh $REMOTE_IPv4 ip -6 route add default dev $IPREMOTEDEV0
 	ssh $REMOTE_IPv4 ip -6 route add via $IPv6_DEV0 $IPv6_LO
+	ssh $REMOTE_IPv4 ip -4 route add via $IPv4_DEV0 $IPv4_LO
 	touch /tmp/prepare_remote
     else
 	$NOTE "remote ip already prepared"
@@ -62,7 +65,8 @@ function prepare_remote () {
 function prepare_ip () {
     if [ ! -e /tmp/prepare_ip ]; then
 	$NOTE "Preparing ip addresses"
-	ifconfig lo   inet6 add $IPv6_LO/128
+	ifconfig lo inet add $IPv4_LO
+	ifconfig lo inet6 add $IPv6_LO/128
 	ifconfig $IPDEV0 inet6 add $IPv6_DEV0/80
 	touch /tmp/prepare_ip
     else
@@ -150,7 +154,6 @@ function snmp_walk_ip ()
 	snmp_walk $host $p $SNMP_COMMUNITY $USER $PW
     done
 }
-
 
 function snmp_get () {
     host=$1
@@ -276,6 +279,8 @@ if [ "$TCPDUMP" == "yes" ]; then
 fi
 if [ "$IPv4" == "yes" ]; then
     snmp_get_ip $IPv4_HOST:$SNMPD_PORT
+    snmp_get_ip $IPv4_LO:$SNMPD_PORT
+    snmp_get_ip $IPv4_DEV0:$SNMPD_PORT
 fi
 if [ "$IPv6" == "yes" ]; then
     snmp_get_ip $IPv6_HOST:$SNMPD_PORT
@@ -287,6 +292,8 @@ if [ "$TCPDUMP" == "yes" ]; then
 fi
 
 if [ "$REMOTE" == "yes" ]; then
+    remote_snmp_get_ip $IPv4_LO:$SNMPD_PORT
+    remote_snmp_get_ip $IPv4_DEV0:$SNMPD_PORT
     remote_snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
     remote_snmp_get_ip udp6:[$IPv6_DEV0]:$SNMPD_PORT
 fi
@@ -297,5 +304,4 @@ fi
 #snmp_trap_ip $IPv4_HOST:$SNMPTRAPD_PORT
 #snmp_trap_ip $IPv6_HOST:$SNMPTRAPD_PORT
 
-#sleep 1
 snmp_check_servers
