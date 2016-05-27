@@ -21,12 +21,12 @@
 [ -z "$SNMP_COMMUNITY" ] && SNMP_COMMUNITY=public
 
 #####################################################################
-SNMPD_LOG=snmpd.log
-SNMPD_PID=snmpd.pid
+SNMPD_LOG=/tmp/snmpd.log
+SNMPD_PID=/tmp/snmpd.pid
 SNMPD_PORT=161
 
-SNMPTRAPD_LOG=snmptrapd.log
-SNMPTRAPD_PID=snmptrapd.pid
+SNMPTRAPD_LOG=/tmp/snmptrapd.log
+SNMPTRAPD_PID=/tmp/snmptrapd.pid
 SNMPTRAPD_PORT=162
 
 USER=awallin
@@ -48,33 +48,33 @@ function snmp_kill () {
 }
 
 function prepare_remote () {
-    if [ ! -e prepare_remote ]; then
+    if [ ! -e /tmp/prepare_remote ]; then
 	$NOTE "Preparing ip remote"
 	ssh $REMOTE_IPv4 ifconfig $IPREMOTEDEV0 inet6 add $IPv6_REMOTE_DEV0/128
 	ssh $REMOTE_IPv4 ip -6 route add default dev $IPREMOTEDEV0
 	ssh $REMOTE_IPv4 ip -6 route add via $IPv6_DEV0 $IPv6_LO
-	touch prepare_remote
+	touch /tmp/prepare_remote
     else
 	$NOTE "remote ip already prepared"
     fi
 }
 
 function prepare_ip () {
-    if [ ! -e prepare_ip ]; then
+    if [ ! -e /tmp/prepare_ip ]; then
 	$NOTE "Preparing ip addresses"
 	ifconfig lo   inet6 add $IPv6_LO/128
 	ifconfig $IPDEV0 inet6 add $IPv6_DEV0/80
-	touch prepare_ip
+	touch /tmp/prepare_ip
     else
 	$NOTE "ip addresses already prepared"
     fi
 }
 
 function prepare_user () {
-    if [ ! -e prepare_user ]; then
+    if [ ! -e /tmp/prepare_user ]; then
 	$NOTE "Preparing user $USER"
 	net-snmp-create-v3-user -A $PW -X $PW -a MD5 -x DES $USER
-	touch prepare_user
+	touch /tmp/prepare_user
     else
 	$NOTE "User already prepared"
     fi
@@ -176,7 +176,7 @@ function snmp_get_ip ()
     done;
 }
 
-TCPDUMP_REMOTE_CAP=tcpdump_remote.cap
+TCPDUMP_REMOTE_CAP=/tmp/tcpdump_remote.cap
 function remote_snmp_get () {
     host=$1
     protocol_version=$2
@@ -239,7 +239,7 @@ function snmp_trap_ip ()
     done
 }
 
-TCPDUMP_CAP=tcpdump.cap
+TCPDUMP_CAP=/tmp/tcpdump.pcap
 function tcpdump_capture ()
 {
     interface=$1
