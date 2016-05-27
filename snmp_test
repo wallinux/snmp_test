@@ -116,15 +116,15 @@ function snmp_start () {
 	snmpd_servers+=("udp:0.0.0.0:$SNMPD_PORT")
     fi
     if [ "$IPv6" == "yes" ]; then
-	snmpd_servers+=("udp6:[$IPv6_LO]:$SNMPD_PORT")
+	#snmpd_servers+=("udp6:[$IPv6_LO]:$SNMPD_PORT")
 	snmpd_servers+=("udp6:[::]:$SNMPD_PORT")
     fi
     if [ "$DTLSUDP" == "yes" ]; then
 	snmpd_servers+=('dtlsudp:0.0.0.0:9161')
 	snmpd_servers+=('dtlsudp:[::]:9161')
     fi
-    /usr/sbin/snmptrapd $snmptrapd_debug -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID udp:$SNMPTRAPD_PORT,udp6:$SNMPTRAPD_PORT
-    /usr/sbin/snmpd $snmpd_debug $mibs -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID ${snmpd_servers[@]}
+    snmptrapd $snmptrapd_debug -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID udp:$SNMPTRAPD_PORT,udp6:$SNMPTRAPD_PORT
+    snmpd $snmpd_debug $mibs -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID ${snmpd_servers[@]}
 }
 
 function snmp_walk () {
