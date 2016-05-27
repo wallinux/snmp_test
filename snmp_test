@@ -11,6 +11,8 @@
 
 [ -z "$IPv4_HOST" ] && IPv4_HOST=0.0.0.0
 [ -z "$IPv6_HOST" ] && IPv6_HOST=udp6:[::1]
+[ -z "$IPDEV0" ] && IPDEV0=eth0
+[ -z "$IPREMOTEDEV0" ] && IPREMOTEDEV0=eth0
 [ -z "$SNMPD_CONF" ] && SNMPD_CONF=snmpd.conf
 [ -z "$SNMPTRAPD_CONF" ] && SNMPTRAPD_CONF=snmptrapd.conf
 [ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.182
@@ -31,8 +33,8 @@ USER=awallin
 PW=kalle123
 
 IPv6_LO=2001:1b70:82a8:90:e085::10
-IPv6_ETH0=2001:1b70:82a8:90:1284:31:0:2
-IPv6_REMOTE_ETH0=2001:1b70:82a8:90:1284:31:0:4
+IPv6_DEV0=2001:1b70:82a8:90:1284:31:0:2
+IPv6_REMOTE_DEV0=2001:1b70:82a8:90:1284:31:0:4
 
 HEAD="head -3"
 NOTE='echo -e \n--- '
@@ -48,9 +50,9 @@ function snmp_kill () {
 function prepare_remote () {
     if [ ! -e prepare_remote ]; then
 	$NOTE "Preparing ip remote"
-	ssh $REMOTE_IPv4 ifconfig eth0 inet6 add $IPv6_REMOTE_ETH0/128
-	ssh $REMOTE_IPv4 ip -6 route add default dev eth0
-	ssh $REMOTE_IPv4 ip -6 route add via $IPv6_ETH0 $IPv6_LO
+	ssh $REMOTE_IPv4 ifconfig $IPREMOTEDEV0 inet6 add $IPv6_REMOTE_DEV0/128
+	ssh $REMOTE_IPv4 ip -6 route add default dev $IPREMOTEDEV0
+	ssh $REMOTE_IPv4 ip -6 route add via $IPv6_DEV0 $IPv6_LO
 	touch prepare_remote
     else
 	$NOTE "remote ip already prepared"
@@ -61,7 +63,7 @@ function prepare_ip () {
     if [ ! -e prepare_ip ]; then
 	$NOTE "Preparing ip addresses"
 	ifconfig lo   inet6 add $IPv6_LO/128
-	ifconfig eth0 inet6 add $IPv6_ETH0/80
+	ifconfig $IPDEV0 inet6 add $IPv6_DEV0/80
 	touch prepare_ip
     else
 	$NOTE "ip addresses already prepared"
@@ -278,7 +280,7 @@ fi
 if [ "$IPv6" == "yes" ]; then
     snmp_get_ip $IPv6_HOST:$SNMPD_PORT
     snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
-    snmp_get_ip udp6:[$IPv6_ETH0]:$SNMPD_PORT
+    snmp_get_ip udp6:[$IPv6_DEV0]:$SNMPD_PORT
 fi
 if [ "$TCPDUMP" == "yes" ]; then
     tcpdump_read 4
@@ -286,7 +288,7 @@ fi
 
 if [ "$REMOTE" == "yes" ]; then
     remote_snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
-    remote_snmp_get_ip udp6:[$IPv6_ETH0]:$SNMPD_PORT
+    remote_snmp_get_ip udp6:[$IPv6_DEV0]:$SNMPD_PORT
 fi
 
 #snmp_walk_ip $IPv4_HOST:$SNMPD_PORT
