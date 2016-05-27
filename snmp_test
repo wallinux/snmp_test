@@ -56,6 +56,8 @@ function prepare_remote () {
 	ssh $REMOTE_IPv4 ip -6 route add default dev $IPREMOTEDEV0
 	ssh $REMOTE_IPv4 ip -6 route add via $IPv6_DEV0 $IPv6_LO
 	ssh $REMOTE_IPv4 ip -4 route add via $IPv4_DEV0 $IPv4_LO
+	scp $SNMPTRAPD_CONF $REMOTE_IPv4:
+	ssh $REMOTE_IPv4 snmptrapd -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID udp:$SNMPTRAPD_PORT,udp6:$SNMPTRAPD_PORT
 	touch /tmp/prepare_remote
     else
 	$NOTE "remote ip already prepared"
