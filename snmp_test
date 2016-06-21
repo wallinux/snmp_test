@@ -14,7 +14,7 @@
 [ -z "$IPDEV0" ] && IPDEV0=eth0
 [ -z "$IPREMOTEDEV0" ] && IPREMOTEDEV0=eth0
 [ -z "$SNMPD_CONF_IN" ] && SNMPD_CONF_IN=snmpd.conf
-[ -z "$SNMPTRAPD_CONF" ] && SNMPTRAPD_CONF=snmptrapd.conf
+[ -z "$SNMPTRAPD_CONF_IN" ] && SNMPTRAPD_CONF_IN=snmptrapd.conf
 [ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.182
 [ -z "$SNMP_PROTOCOLS" ] && SNMP_PROTOCOLS="2c"
 [ -z "$SNMP_COMMUNITY" ] && SNMP_COMMUNITY=public
@@ -31,6 +31,7 @@ DTLSUDP_PORT=10161
 
 SNMPTRAPD_LOG=$TESTDIR/snmptrapd.log
 SNMPTRAPD_PID=$TESTDIR/snmptrapd.pid
+SNMPTRAPD_CONF=$TESTDIR/snmptrapd.conf
 SNMPTRAPD_PORT=162
 SNMPTRAPD_DTLSUDP_PORT=10162
 
@@ -111,6 +112,7 @@ function prepare_dtlsudp ()
     fi
     
     create_snmpd_conf
+    create_snmptrapd_conf
     export_env
 }
 
@@ -121,8 +123,9 @@ function create_cert ()
 	$NET_SNMP_CERT genca -I --cn $PRIMECA -C $CERTDIR
 	$NET_SNMP_CERT gencert -I -t snmpd --with-ca $PRIMECA --cn $PRIMEHOSTNAME -C $CERTDIR
 	$NET_SNMP_CERT gencert -I -t snmpapp --cn $TSMUSER -C $CERTDIR
-	chmod 755 $CERTDIR/tls $CERTDIR/tls/ca-certs $CERTDIR/tls/certs
-	chmod a+r $CERTDIR/tls/ca-certs/* $CERTDIR/tls/certs/*
+	$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TSMUSER -C $CERTDIR
+	#chmod 755 $CERTDIR/tls $CERTDIR/tls/ca-certs $CERTDIR/tls/certs
+	#chmod a+r $CERTDIR/tls/ca-certs/* $CERTDIR/tls/certs/*
     fi
 }
 
@@ -132,12 +135,14 @@ function get_cert ()
 
     serverCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpd -C $CERTDIR)
     appCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpapp -C $CERTDIR)
+    trapdCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmptrapd -C $CERTDIR)
     caCert=$($NET_SNMP_CERT showcas --fingerprint --brief $PRIMECA -C $CERTDIR)
 
     echo PRIMEUSER:  $PRIMEUSER
     echo TSMUSER:    $TSMUSER
     echo serverCert: $serverCert
     echo appCert:    $appCert
+    echo trapdCert:  $trapdCert
     echo caCert:     $caCert
 }
 
@@ -158,21 +163,42 @@ function create_snmpd_conf ()
     fi
 }
 
+function create_snmptrapd_conf ()
+{
+    $NOTE $FUNCNAME
+
+    cp $SNMPTRAPD_CONF_IN $SNMPTRAPD_CONF
+
+    if [ "$DTLSUDP" == "yes" ]; then
+#	echo "[snmp] debugTokens tsm" >> $SNMPTRAPD_CONF
+#	echo "[snmp] doDebugging 1" >> $SNMPTRAPD_CONF
+	echo "[snmp] peerCert $trapdCert" >> $SNMPTRAPD_CONF
+	echo "[snmp] trustCert $caCert" >> $SNMPTRAPD_CONF
+	echo "certSecName 9 $appCert --cn" >> $SNMPTRAPD_CONF
+	echo "certSecName 100 $caCert  --rfc822" >> $SNMPTRAPD_CONF
+	echo "authuser log -s tsm $TSMUSER authpriv" >> $SNMPTRAPD_CONF
+    fi
+}
+
 function create_snmp_conf ()
 {
     $NOTE $FUNCNAME
 
     echo "localCert $appCert" > $SNMP_CONF
+    echo "peerCert  $trapdCert" > $SNMP_CONF
+#    echo "defSecurityModel tsm" > $SNMP_CONF
     echo --- $SNMP_CONF
     cat $SNMP_CONF
 }
 
+SNMPENV=$TESTDIR/snmpenv
 function export_env ()
 {
     $NOTE $FUNCNAME
 
-    export SNMP_PERSISTENT_DIR=$TESTDIR/persist
-    export SNMPCONFPATH=$TESTDIR:$CERTDIR:$SNMP_PERSISTENT_DIR
+    echo "export SNMP_PERSISTENT_DIR=$TESTDIR/persist" > $SNMPENV
+    echo "export SNMPCONFPATH=$TESTDIR:$CERTDIR:$SNMP_PERSISTENT_DIR" >> $SNMPENV
+    source $SNMPENV
     mkdir -p $SNMP_PERSISTENT_DIR
 }
 
@@ -199,7 +225,7 @@ function snmp_check_servers () {
 function snmp_start () {
     if [ "$DEBUG" == yes ]; then
 	#snmptrapd_debug=-DALL
-	snmptrapd_debug=-Dtrap,usm
+	snmptrapd_debug=-Dtrap,usm,tsm
 	snmpd_debug=-Dtrap,trapsess,example_notification,dlmod,ericssonDiscoveryMIB,netsnmp_sockaddr_in6_2,netsnmp_udp6,netsnmp_ipv6,snmpTargetAddrEntry,tdomain
 	#snmpd_debug=-Dtrap,transport,usm,trapsess,netsnmp_udp6,netsnmp_sockaddr_in6,snmpd_ports,socket:option,udpbase:sendto,netsnmp_udp,netsnmp_udp6,netsnmp_ipv6
 #	snmpd_debug=-DALL
@@ -223,7 +249,7 @@ function snmp_start () {
 	snmpd_servers+=("dtlsudp:0.0.0.0:$DTLSUDP_PORT")
 	snmpd_servers+=("dtlsudp:[::]:$DTLSUDP_PORT")
 	snmptrapd_servers+=("dtlsudp:0.0.0.0:$SNMPTRAPD_DTLSUDP_PORT")
-	snmptrapd_servers+=("dtlsudp:[::]:$SNMPTRAPD_DTLSUDP_PORT")
+	snmptrapd_servers+=("dtlsudp6:[::]:$SNMPTRAPD_DTLSUDP_PORT")
     fi
 #    mibs="-I -system_mib -I -at -I -icmp -I -udp -I -udpTable -I -udpEndpointTable -I -ifTable -I -tcp -I -tcpListenerTable \
 #          -I -tcpConnectionTable -I -tcpTable -I -sysORTable -I -ip -I -ipIfStatsTable -I -ip_scalars -I -ipCidrRouteTable \
@@ -233,7 +259,7 @@ function snmp_start () {
 #	  -I -mteObjectsTable -I -mteObjectsConf -I -mteEvent -I -mteEventConf -I -mteScalars "
 
     set -x
-    snmptrapd $snmptrapd_debug -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}
+    snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}
     snmpd $snmpd_debug $mibs -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID ${snmpd_servers[@]}
     set +x
 }
@@ -337,19 +363,18 @@ function snmp_trap () {
     #trap_oid=SNMPv2-MIB::snmpTrapOID.0
     #oid=coldStart.0
 
-    #trap_debug=-Ddumph_send,dumpv_send,usm
+    #trap_debug=-Ddumph_send,dumpv_send,usm,tsm
 
     $NOTE "TRAP $host v$protocol_version"
-    set -x 
     if [ $protocol_version == "1" ]; then
 	snmptrap $trap_debug -v $protocol_version -c $community $host $trap_oid ""  6 17 ""  $oid i 111
     elif [ $protocol_version == "2c" ]; then
 	snmptrap $trap_debug -v $protocol_version -c $community $host "" $trap_oid $oid i 222
     else
-	snmptrap $trap_debug -e 80001f8880523983647b8b0357 -v $protocol_version -c $community -a MD5 -A $pw -x AES -X $pw -l authPriv -u $user $host "" $trap_oid $oid i 333
-	snmpinform -v $protocol_version -u $user -a MD5 -A $pw -l authNoPriv $host "" $oid
+	snmptrap $trap_debug -e 80001f8880523983647b8b0357 -v $protocol_version -a MD5 -A $pw -x AES -X $pw -l authPriv -u $user $host "" $trap_oid $oid i 333
+	$NOTE "INFORM $host v$protocol_version"
+	snmpinform $trap_debug -e 80001f8880523983647b8b0357 -v $protocol_version -a MD5 -A $pw -x AES -X $pw -l authPriv -u $user $host "" $trap_oid $oid i 444
     fi
-    set +x
 }
 
 function snmp_trap_ip ()
@@ -359,6 +384,20 @@ function snmp_trap_ip ()
     for p in $SNMP_PROTOCOLS; do
 	snmp_trap $host $p $SNMP_COMMUNITY $PRIMEUSER $PRIMEPW
     done
+}
+
+function snmp_trap_dtlsudp ()
+{
+    host=$1
+
+    trap_oid="NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatNotification"
+    oid=netSnmpExampleHeartbeatRate
+
+    #trap_debug=-Ddumph_send,dumpv_send,usm,tsm
+    $NOTE "TRAP $host v3"
+    snmptrap $trap_debug -v 3 $host "" $trap_oid $oid i 555
+    $NOTE "INFORM $host v3"
+    snmpinform $trap_debug -v 3 $host "" $trap_oid $oid i 666
 }
 
 TCPDUMP_CAP=$TESTDIR/tcpdump.pcap
@@ -426,7 +465,8 @@ fi
 
 snmp_trap_ip $IPv4_HOST:$SNMPTRAPD_PORT
 snmp_trap_ip $IPv6_HOST:$SNMPTRAPD_PORT
-snmp_trap_ip dtlsudp:127.0.0.1:$SNMPTRAPD_DTLSUDP_PORT
-snmp_trap_ip dtlsudp:[::1]:$SNMPTRAPD_DTLSUDP_PORT
-
+if [ "$DTLSUDP" == "yes" ]; then
+    snmp_trap_dtlsudp dtlsudp:127.0.0.1:$SNMPTRAPD_DTLSUDP_PORT
+    snmp_trap_dtlsudp dtlsudp6:[::1]:$SNMPTRAPD_DTLSUDP_PORT
+fi
 snmp_check_servers
