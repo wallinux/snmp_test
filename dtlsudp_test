@@ -25,32 +25,30 @@ NOTE='echo -e \n--- '
 NET_SNMP_CERT=net-snmp-cert
 
 #SNMP_DEBUG=-Ddtlsudp -d
-#SNMP_DEBUG=-d
 SNMPGET="snmpget $SNMP_DEBUG -On"
 SNMPSET="snmpset $SNMP_DEBUG -On"
 
-TCPDUMP_CAP=tcpdump.cap
+TCPDUMP_CAP=$TESTDIR/tcpdump.cap
 function tcpdump_capture ()
 {
     interface=$1
     rotate_seconds=$2
     filecount=1
 
-    set -x
-    tcpdump -G $rotate_seconds -W $filecount -w $TCPDUMP_CAP -i $interface &
-    set +x
-    sleep 1
+    if [ "$TCPDUMP" == "yes" ]; then
+	tcpdump -G $rotate_seconds -W $filecount -w $TCPDUMP_CAP -i $interface &
+	sleep 1
+    fi
 }
 
 function tcpdump_read ()
 {
-    sleep $1
-    # workaround: need a last package to close the tcpdump capture
-    ping6 -c 1 ::1 >/dev/null
-
-    set -x
-    tcpdump -T snmp -r $TCPDUMP_CAP port $PORT
-    set +x
+    if [ "$TCPDUMP" == "yes" ]; then
+	sleep $1
+	# workaround: need a last package to close the tcpdump capture
+	ping6 -c 1 ::1 >/dev/null
+	tcpdump -T snmp -r $TCPDUMP_CAP port $PORT
+    fi
 }
 
 function create_cert ()
@@ -78,6 +76,7 @@ function get_cert ()
     echo caCert:     $caCert
 }
 
+
 function create_snmpd_conf ()
 {
     $NOTE $FUNCNAME
@@ -103,6 +102,14 @@ function create_snmp_conf ()
     
     echo --- $SNMP_CONF
     cat $SNMP_CONF
+}
+
+function prepare ()
+{
+    create_cert
+    get_cert
+    create_snmpd_conf
+    create_snmp_conf
 }
 
 function export_env ()
@@ -156,20 +163,13 @@ function test3 ()
 
 killall snmpd
 
-create_cert
-get_cert
-create_snmpd_conf
-create_snmp_conf
+prepare
 export_env
 start_snmpd
 
-if [ "$TCPDUMP" == "yes" ]; then
-    tcpdump_capture lo 4
-fi
+tcpdump_capture lo 4
 test1
-if [ "$TCPDUMP" == "yes" ]; then
-    tcpdump_read 4
-fi
+tcpdump_read 4
 
 test2
 test3
