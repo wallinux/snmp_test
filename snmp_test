@@ -199,8 +199,8 @@ function create_snmp_conf ()
     $NOTE $FUNCNAME
 
     echo "localCert $appCert" > $SNMP_CONF
-    echo "peerCert  $trapdCert" > $SNMP_CONF
-#    echo "defSecurityModel tsm" > $SNMP_CONF
+    echo "peerCert  $trapdCert" >> $SNMP_CONF
+#    echo "defSecurityModel tsm" >> $SNMP_CONF
     echo --- $SNMP_CONF
     cat $SNMP_CONF
 }
