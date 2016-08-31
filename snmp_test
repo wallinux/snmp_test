@@ -172,7 +172,7 @@ function create_snmpd_conf ()
 
     echo "[snmp] localCert $serverCert" >> $SNMPD_CONF
     echo "certSecName 10 $appCert --cn" >> $SNMPD_CONF
-#	echo "certSecName 20 $appCert --sn snmpapp" >> $SNMPD_CONF
+#    echo "certSecName 20 $appCert --sn snmpapp" >> $SNMPD_CONF
     echo "rwuser -s tsm $TSMUSER authpriv" >> $SNMPD_CONF
 
     if [ "$DTLSUDP4" == "yes" ]; then
@@ -265,10 +265,12 @@ function snmp_start () {
 	snmptrapd_servers+=("udp6:$SNMPTRAPD_PORT")
     fi
     if [ "$DTLSUDP4" == "yes" ]; then
+	snmpd_servers+=("dtlsudp:$IPv4_LO:$DTLSUDP_PORT")
 	snmpd_servers+=("dtlsudp:$IPv4_HOST:$DTLSUDP_PORT")
 	snmptrapd_servers+=("dtlsudp:$IPv4_HOST:$SNMPTRAPD_DTLSUDP_PORT")
     fi
     if [ "$DTLSUDP6" == "yes" ]; then
+	snmpd_servers+=("dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT")
 	snmpd_servers+=("dtlsudp6:[$IPv6_HOST]:$DTLSUDP_PORT")
 	snmptrapd_servers+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
     fi
@@ -347,26 +349,33 @@ function remote_snmp_get () {
     community=$3
     user=$4
     pw=$5
+    option=$6
 
     oid=system.sysDescr.0
 
-    $NOTE "REMOTE GET $host v$protocol_version"
+    $NOTE "REMOTE GET $host v$protocol_version $oid"
     ssh -n -f $REMOTE_IPv4 "nohup tcpdump -G 10 -W 1 -i any -w $TCPDUMP_REMOTE_CAP >/dev/null 2>&1 &"
     if [ $protocol_version == "3" ]; then
-	ssh $REMOTE_IPv4 "source $SNMPENV; snmpget -v 3 -a MD5 -A $pw -l authNoPriv -u $user $host $oid"
+	if [ "$option" == "" ]; then
+	    ssh $REMOTE_IPv4 "source $SNMPENV; snmpget -v $protocol_version -a MD5 -A $pw -l authNoPriv -u $user $host $oid"
+	else
+	    ssh $REMOTE_IPv4 "source $SNMPENV; snmpget $option -v $protocol_version  $host $oid"
+	fi
     else
-	ssh $REMOTE_IPv4 "source $SNMPENV; snmpget -v $protocol_version -c $community $host $oid"
+	ssh $REMOTE_IPv4 "source $SNMPENV; snmpget $option -v $protocol_version -c $community $host $oid"
     fi
     sleep 4
-    ssh $REMOTE_IPv4 "tcpdump -T snmp -r $TCPDUMP_REMOTE_CAP port $SNMPD_PORT OR port $DTLSUDP_PORT"
+    ssh $REMOTE_IPv4 "tcpdump -T snmp -r $TCPDUMP_REMOTE_CAP port $SNMPD_PORT or port $DTLSUDP_PORT"
+
 }
 
 function remote_snmp_get_ip ()
 {
     host=$1
+    get_option=$2
 
     for p in $SNMP_PROTOCOLS; do
-	remote_snmp_get $host $p $SNMP_COMMUNITY $PRIMEUSER $PRIMEPW
+	remote_snmp_get $host $p $SNMP_COMMUNITY $PRIMEUSER $PRIMEPW "$get_option"
     done;
 }
 
