@@ -2,7 +2,7 @@
 
 [ -z "$IPv4" ] && IPv4=yes
 [ -z "$IPv6" ] && IPv6=no
-[ -z "$DTLSUDP" ] && DTLSUDP=no
+[ -z "$DTLSUDP4" ] && DTLSUDP4=no
 [ -z "$DTLSUDP6" ] && DTLSUDP6=no
 [ -z "$REMOTE" ] && REMOTE=no
 [ -z "$TCPDUMP" ] && TCPDUMP=no
@@ -69,7 +69,7 @@ function prepare () {
     fi
 
     prepare_ip
-    prepare_dtlsudp
+    prepare_config
     prepare_remote
 }
 
@@ -88,7 +88,14 @@ function prepare_remote () {
 	    if [ -e $SNMP_CONF ]; then
 		scp $SNMP_CONF $REMOTE_IPv4:/tmp/snmp/test
 	    fi
-	    ssh $REMOTE_IPv4 snmptrapd -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID udp:$SNMPTRAPD_PORT,udp6:$SNMPTRAPD_PORT
+	    ssh $REMOTE_IPv4 snmptrapd \
+		-c $SNMPTRAPD_CONF \
+		-Lf $SNMPTRAPD_LOG \
+		-p $SNMPTRAPD_PID \
+		udp:$SNMPTRAPD_PORT \
+		udp6:$SNMPTRAPD_PORT \
+		dtlsudp:$SNMPTRAPD_DTLSUDP_PORT \
+		dtlsudp6:$SNMPTRAPD_DTLSUDP_PORT
 	    if [ -e $CERTDIR ]; then
 		scp -r $CERTDIR $REMOTE_IPv4:/tmp/snmp/
 	    fi
@@ -113,13 +120,11 @@ function prepare_ip () {
     fi
 }
 
-function prepare_dtlsudp ()
+function prepare_config ()
 {
-    if [ "$DTLSUDP" == "yes" ]; then
-	create_cert
-	get_cert
-	create_snmp_conf
-    fi
+    create_cert
+    get_cert
+    create_snmp_conf
     
     create_snmpd_conf
     create_snmptrapd_conf
@@ -164,16 +169,17 @@ function create_snmpd_conf ()
     cp $SNMPD_CONF_IN $SNMPD_CONF
     echo "createUser $PRIMEUSER MD5 $PRIMEPW DES $PRIMEPW" >> $SNMPD_CONF
     echo "rwuser $PRIMEUSER" >> $SNMPD_CONF
-  
-    if [ "$DTLSUDP" == "yes" ]; then
-	echo "[snmp] localCert $serverCert" >> $SNMPD_CONF
-	echo "certSecName 10 $appCert --cn" >> $SNMPD_CONF
+
+    echo "[snmp] localCert $serverCert" >> $SNMPD_CONF
+    echo "certSecName 10 $appCert --cn" >> $SNMPD_CONF
 #	echo "certSecName 20 $appCert --sn snmpapp" >> $SNMPD_CONF
-	echo "rwuser -s tsm $TSMUSER authpriv" >>$SNMPD_CONF
-	echo trap2sink dtlsudp:localhost:$SNMPTRAPD_DTLSUDP_PORT public  >>$SNMPD_CONF
-	if [ "$DTLSUDP6" == "yes" ]; then
-	    echo trap2sink dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT public  >>$SNMPD_CONF
-	fi
+    echo "rwuser -s tsm $TSMUSER authpriv" >> $SNMPD_CONF
+
+    if [ "$DTLSUDP4" == "yes" ]; then
+	echo trap2sink dtlsudp:localhost:$SNMPTRAPD_DTLSUDP_PORT public >> $SNMPD_CONF
+    fi
+    if [ "$DTLSUDP6" == "yes" ]; then
+	echo trap2sink dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT public >> $SNMPD_CONF
     fi
 }
 
@@ -183,15 +189,13 @@ function create_snmptrapd_conf ()
 
     cp $SNMPTRAPD_CONF_IN $SNMPTRAPD_CONF
 
-    if [ "$DTLSUDP" == "yes" ]; then
-#	echo "[snmp] debugTokens tsm" >> $SNMPTRAPD_CONF
-#	echo "[snmp] doDebugging 1" >> $SNMPTRAPD_CONF
-	echo "[snmp] peerCert $trapdCert" >> $SNMPTRAPD_CONF
-	echo "[snmp] trustCert $caCert" >> $SNMPTRAPD_CONF
-	echo "certSecName 9 $appCert --cn" >> $SNMPTRAPD_CONF
-	echo "certSecName 100 $caCert  --rfc822" >> $SNMPTRAPD_CONF
-	echo "authuser log -s tsm $TSMUSER authpriv" >> $SNMPTRAPD_CONF
-    fi
+#   echo "[snmp] debugTokens tsm" >> $SNMPTRAPD_CONF
+#   echo "[snmp] doDebugging 1" >> $SNMPTRAPD_CONF
+    echo "[snmp] peerCert $trapdCert" >> $SNMPTRAPD_CONF
+    echo "[snmp] trustCert $caCert" >> $SNMPTRAPD_CONF
+    echo "certSecName 9 $appCert --cn" >> $SNMPTRAPD_CONF
+    echo "certSecName 100 $caCert  --rfc822" >> $SNMPTRAPD_CONF
+    echo "authuser log -s tsm $TSMUSER authpriv" >> $SNMPTRAPD_CONF
 }
 
 function create_snmp_conf ()
@@ -260,14 +264,15 @@ function snmp_start () {
 	snmpd_servers+=("udp6:[$IPv6_HOST]:$SNMPD_PORT")
 	snmptrapd_servers+=("udp6:$SNMPTRAPD_PORT")
     fi
-    if [ "$DTLSUDP" == "yes" ]; then
+    if [ "$DTLSUDP4" == "yes" ]; then
 	snmpd_servers+=("dtlsudp:$IPv4_HOST:$DTLSUDP_PORT")
 	snmptrapd_servers+=("dtlsudp:$IPv4_HOST:$SNMPTRAPD_DTLSUDP_PORT")
-	if [ "$DTLSUDP6" == "yes" ]; then
-	    snmpd_servers+=("dtlsudp6:[$IPv6_HOST]:$DTLSUDP_PORT")
-	    snmptrapd_servers+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
-	fi
     fi
+    if [ "$DTLSUDP6" == "yes" ]; then
+	snmpd_servers+=("dtlsudp6:[$IPv6_HOST]:$DTLSUDP_PORT")
+	snmptrapd_servers+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
+    fi
+
 #    mibs="-I -system_mib -I -at -I -icmp -I -udp -I -udpTable -I -udpEndpointTable -I -ifTable -I -tcp -I -tcpListenerTable \
 #          -I -tcpConnectionTable -I -tcpTable -I -sysORTable -I -ip -I -ipIfStatsTable -I -ip_scalars -I -ipCidrRouteTable \
 #	  -I -inetCidrRouteTable -I -ipDefaultRouterTable -I -ipSystemStatsTable -I -ipAddressTable -I -ipAddressPrefixTable \
@@ -459,13 +464,13 @@ if [ "$IPv6" == "yes" ]; then
     snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
     snmp_get_ip udp6:[$IPv6_DEV0]:$SNMPD_PORT
 fi
-if [ "$DTLSUDP" == "yes" ]; then
+if [ "$DTLSUDP4" == "yes" ]; then
     snmp_get_ip dtlsudp:$IPv4_LO:$DTLSUDP_PORT "-T their_identity=$serverCert"
     snmp_get_ip dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT "-T their_identity=$serverCert" 
-    if [ "$DTLSUDP6" == "yes" ]; then
-	snmp_get_ip dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT "-T their_identity=$serverCert"
-	snmp_get_ip dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT "-T their_identity=$serverCert" 
-    fi
+fi
+if [ "$DTLSUDP6" == "yes" ]; then
+    snmp_get_ip dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT "-T their_identity=$serverCert"
+    snmp_get_ip dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT "-T their_identity=$serverCert" 
 fi
 
 tcpdump_read 4
@@ -477,13 +482,13 @@ if [ "$REMOTE" == "yes" ]; then
 	remote_snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
 	remote_snmp_get_ip udp6:[$IPv6_DEV0]:$SNMPD_PORT
     fi
-    if [ "$DTLSUDP" == "yes" ]; then
+    if [ "$DTLSUDP4" == "yes" ]; then
 	remote_snmp_get_ip dtlsudp:$IPv4_LO:$DTLSUDP_PORT "-T their_identity=$serverCert"
 	remote_snmp_get_ip dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT "-T their_identity=$serverCert"
-	if [ "$DTLSUDP6" == "yes" ]; then
-	    remote_snmp_get_ip dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT "-T their_identity=$serverCert" 
-	    remote_snmp_get_ip dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT "-T their_identity=$serverCert" 
-	fi
+    fi
+    if [ "$DTLSUDP6" == "yes" ]; then
+	remote_snmp_get_ip dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT "-T their_identity=$serverCert" 
+	remote_snmp_get_ip dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT "-T their_identity=$serverCert" 
     fi
 fi
 
@@ -494,11 +499,11 @@ snmp_trap_ip $IPv4_LO:$SNMPTRAPD_PORT
 if [ "$IPv6" == "yes" ]; then
     snmp_trap_ip udp6:[$IPv6_LO]:$SNMPTRAPD_PORT
 fi
-if [ "$DTLSUDP" == "yes" ]; then
+if [ "$DTLSUDP4" == "yes" ]; then
     snmp_trap_dtlsudp dtlsudp:$IPv4_LO:$SNMPTRAPD_DTLSUDP_PORT
-    if [ "$DTLSUDP6" == "yes" ]; then
-	snmp_trap_dtlsudp dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT
-    fi
+fi
+if [ "$DTLSUDP6" == "yes" ]; then
+    snmp_trap_dtlsudp dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT
 fi
 
 snmp_check_servers
