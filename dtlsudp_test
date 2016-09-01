@@ -154,12 +154,12 @@ function create_snmptrapd_conf ()
     echo "" >> $SNMPTRAPD_CONF
     #echo "[snmp] debugTokens tsm" >> $SNMPTRAPD_CONF
     #echo "[snmp] doDebugging 1" >> $SNMPTRAPD_CONF
-#    echo "[snmp] peerCert $trapdCert" >> $SNMPTRAPD_CONF
-#    echo "[snmp] trustCert $caCert" >> $SNMPTRAPD_CONF
+    echo "[snmp] peerCert $trapdCert" >> $SNMPTRAPD_CONF
+    echo "[snmp] trustCert $caCert" >> $SNMPTRAPD_CONF
 #    echo "certSecName 9 $appCert --cn" >> $SNMPTRAPD_CONF
 #    echo "certSecName 100 $caCert  --rfc822" >> $SNMPTRAPD_CONF
-#    echo 'createUser -e 80001f8880523983647b8b0358 tsmuser MD5 "kalle123" AES "kalle123"' >> $SNMPTRAPD_CONF 
-#    echo "authuser log -s tsm $TSMUSER authpriv" >> $SNMPTRAPD_CONF
+    echo 'createUser -e 80001f8880523983647b8b0358 tsmuser MD5 "kalle123" AES "kalle123"' >> $SNMPTRAPD_CONF 
+    echo "authuser log -s tsm $TSMUSER authpriv" >> $SNMPTRAPD_CONF
 }
 
 function create_snmp_conf ()
@@ -224,7 +224,7 @@ function snmp_start () {
 	snmpd_servers+=("dtlsudp6:[$IPv6_HOST]:$DTLSUDP_PORT")
 	snmptrapd_servers+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
     fi
-    snmptrapd $snmptrapd_debug -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID udp:162 ${snmptrapd_servers[@]}
+    snmptrapd $snmptrapd_debug -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}
     snmpd $snmpd_debug $mibs -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID ${snmpd_servers[@]}
 }
 
@@ -310,7 +310,7 @@ snmp_start
 
 $NOTE $(date)
 
-tcpdump_capture lo 4
+tcpdump_capture lo 8
 if [ "$DTLSUDP4" == "yes" ]; then
     echo ======== DTLSUDP4
     snmp_get_ip dtlsudp:$IPv4_LO:$DTLSUDP_PORT "-T their_identity=$serverCert"
