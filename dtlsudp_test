@@ -1,34 +1,282 @@
 #!/bin/bash
 
+[ -z "$IPv4" ] && IPv4=yes
+[ -z "$IPv6" ] && IPv6=no
+[ -z "$DTLSUDP4" ] && DTLSUDP4=yes
+[ -z "$DTLSUDP6" ] && DTLSUDP6=yes
 [ -z "$TCPDUMP" ] && TCPDUMP=no
-#HOST=[::1]
-[ -z "$HOST" ] && HOST=127.0.0.1
-[ -z "$PORT" ] && PORT=10161
+[ -z "$TRACE" ] && TRACE=yes
+[ -z "$SHOWLOGS" ] && SHOWLOGS=no
+[ -z "$DEBUG" ] && DEBUG=yes
 
-TESTDIR=/tmp/test
-CERTDIR=/tmp/cert
+[ -z "$IPv4_HOST" ] && IPv4_HOST=0.0.0.0
+[ -z "$IPv6_HOST" ] && IPv6_HOST=::
+[ -z "$IPDEV0" ] && IPDEV0=eth0
+[ -z "$SNMPD_CONF_IN" ] && SNMPD_CONF_IN=snmpd.conf
+[ -z "$SNMPTRAPD_CONF_IN" ] && SNMPTRAPD_CONF_IN=snmptrapd.conf
+[ -z "$SNMP_PROTOCOLS" ] && SNMP_PROTOCOLS="3"
+[ -z "$SNMP_COMMUNITY" ] && SNMP_COMMUNITY=public
 
-TESTUSER=testuser
-TESTHOSTNAME=e.prime.com
-TESTCA=ca.prime.org
+#####################################################################
+TESTDIR=/tmp/snmp/test
+CERTDIR=/tmp/snmp/cert
 
-SERVER=dtlsudp:$HOST:$PORT
-OID=.1.3.6.1.2.1.1.6.0
-
-SNMPD_CONF=$TESTDIR/snmpd.conf
 SNMPD_LOG=$TESTDIR/snmpd.log
 SNMPD_PID=$TESTDIR/snmpd.pid
+SNMPD_CONF=$TESTDIR/snmpd.conf
+SNMPD_PORT=161
+DTLSUDP_PORT=10161
+
+SNMPTRAPD_LOG=$TESTDIR/snmptrapd.log
+SNMPTRAPD_PID=$TESTDIR/snmptrapd.pid
+SNMPTRAPD_CONF=$TESTDIR/snmptrapd.conf
+SNMPTRAPD_PORT=162
+SNMPTRAPD_DTLSUDP_PORT=10162
 
 SNMP_CONF=$TESTDIR/snmp.conf
 
+PRIMEUSER=primeuser
+TSMUSER=tsmuser
+PRIMEHOSTNAME=e.prime.com
+PRIMECA=ca.prime.org
+PRIMEPW=kalle123
+
+IPv4_LO=172.16.1.100
+IPv4_DEV0=128.224.95.181
+IPv6_LO=2001:1b70:82a8:90:e085::10
+IPv6_DEV0=2001:1b70:82a8:90:1284:31:0:2
+
+HEAD="head -3"
 NOTE='echo -e \n--- '
+
 NET_SNMP_CERT=net-snmp-cert
 
-#SNMP_DEBUG=-Ddtlsudp -d
-SNMPGET="snmpget $SNMP_DEBUG -On"
-SNMPSET="snmpset $SNMP_DEBUG -On"
+#####################################################################
+function snmp_kill () {
+    # Kill all running snmp servers
+    killall snmpd
+    killall snmptrapd
+    sleep 1
+}
 
-TCPDUMP_CAP=$TESTDIR/tcpdump.cap
+function prepare () {
+    if [ ! -e $TESTDIR ]; then
+	mkdir -p $TESTDIR
+    fi
+
+    prepare_ip
+    prepare_dtlsudp
+}
+
+PREPARE_IP=$TESTDIR/prepare_ip
+function prepare_ip () {
+    if [ ! -e $PREPARE_IP ]; then
+	$NOTE "Preparing ip addresses"
+	ifconfig lo inet add $IPv4_LO
+	ifconfig lo inet6 add $IPv6_LO/128
+	ifconfig $IPDEV0 inet6 add $IPv6_DEV0/80
+	touch $PREPARE_IP
+    else
+	$NOTE "IP addresses already prepared"
+    fi
+}
+
+function prepare_dtlsudp ()
+{
+    create_cert
+    get_cert
+    create_snmp_conf
+    
+    create_snmpd_conf
+    create_snmptrapd_conf
+    export_env
+}
+
+function create_cert ()
+{
+    $NOTE $FUNCNAME
+    if [ ! -d $CERTDIR ]; then
+	$NET_SNMP_CERT genca -I --cn $PRIMECA -C $CERTDIR
+	$NET_SNMP_CERT gencert -I -t snmpd --with-ca $PRIMECA --cn $PRIMEHOSTNAME -C $CERTDIR
+	$NET_SNMP_CERT gencert -I -t snmpapp --cn $TSMUSER -C $CERTDIR
+	$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TSMUSER -C $CERTDIR
+	#chmod 755 $CERTDIR/tls $CERTDIR/tls/ca-certs $CERTDIR/tls/certs
+	#chmod a+r $CERTDIR/tls/ca-certs/* $CERTDIR/tls/certs/*
+    fi
+}
+
+function get_cert ()
+{
+    $NOTE $FUNCNAME
+
+    serverCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpd -C $CERTDIR)
+    appCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpapp -C $CERTDIR)
+    trapdCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmptrapd -C $CERTDIR)
+    caCert=$($NET_SNMP_CERT showcas --fingerprint --brief $PRIMECA -C $CERTDIR)
+
+    echo PRIMEUSER:  $PRIMEUSER
+    echo TSMUSER:    $TSMUSER
+    echo serverCert: $serverCert
+    echo appCert:    $appCert
+    echo trapdCert:  $trapdCert
+    echo caCert:     $caCert
+}
+
+
+function create_snmpd_conf ()
+{
+    $NOTE $FUNCNAME
+
+    cp $SNMPD_CONF_IN $SNMPD_CONF
+    echo "createUser $PRIMEUSER MD5 $PRIMEPW DES $PRIMEPW" >> $SNMPD_CONF
+    echo "rwuser $PRIMEUSER" >> $SNMPD_CONF
+  
+    echo "[snmp] localCert $serverCert" >> $SNMPD_CONF
+    echo "certSecName 10 $appCert --cn" >> $SNMPD_CONF
+    #	echo "certSecName 20 $appCert --sn snmpapp" >> $SNMPD_CONF
+    echo "rwuser -s tsm $TSMUSER authpriv" >>$SNMPD_CONF
+    if [ "$DTLSUDP4" == "yes" ]; then
+	echo DTLSUDP4
+	echo trapsess -Ci -v 3 dtlsudp:$SNMPTRAPD_DTLSUDP_PORT  >>$SNMPD_CONF
+    fi
+    if [ "$DTLSUDP6" == "yes" ]; then
+	echo DTLSUDP6
+	echo trapsess -Ci -v 3 dtlsudp6:[::]:$SNMPTRAPD_DTLSUDP_PORT  >>$SNMPD_CONF
+    fi
+}
+
+function create_snmptrapd_conf ()
+{
+    $NOTE $FUNCNAME
+
+    cp $SNMPTRAPD_CONF_IN $SNMPTRAPD_CONF
+
+    echo "" >> $SNMPTRAPD_CONF
+    #echo "[snmp] debugTokens tsm" >> $SNMPTRAPD_CONF
+    #echo "[snmp] doDebugging 1" >> $SNMPTRAPD_CONF
+#    echo "[snmp] peerCert $trapdCert" >> $SNMPTRAPD_CONF
+#    echo "[snmp] trustCert $caCert" >> $SNMPTRAPD_CONF
+#    echo "certSecName 9 $appCert --cn" >> $SNMPTRAPD_CONF
+#    echo "certSecName 100 $caCert  --rfc822" >> $SNMPTRAPD_CONF
+#    echo 'createUser -e 80001f8880523983647b8b0358 tsmuser MD5 "kalle123" AES "kalle123"' >> $SNMPTRAPD_CONF 
+#    echo "authuser log -s tsm $TSMUSER authpriv" >> $SNMPTRAPD_CONF
+}
+
+function create_snmp_conf ()
+{
+    $NOTE $FUNCNAME
+
+    echo "localCert $appCert" > $SNMP_CONF
+    echo "peerCert  $trapdCert" >> $SNMP_CONF
+    echo "defSecurityModel tsm" >> $SNMP_CONF
+    echo --- $SNMP_CONF
+    cat $SNMP_CONF
+}
+
+SNMPENV=$TESTDIR/snmpenv
+function export_env ()
+{
+    $NOTE $FUNCNAME
+
+    echo "export SNMP_PERSISTENT_DIR=$TESTDIR/persist" > $SNMPENV
+    echo "export SNMPCONFPATH=$TESTDIR:$CERTDIR:$SNMP_PERSISTENT_DIR" >> $SNMPENV
+    source $SNMPENV
+    mkdir -p $SNMP_PERSISTENT_DIR
+}
+
+function show_logs () {
+    if [ "$SHOWLOGS" == yes ]; then
+	#$NOTE "$SNMPD_LOG"
+	#cat $SNMPD_LOG
+	$NOTE "$SNMPTRAPD_LOG"
+	cat $SNMPTRAPD_LOG
+    fi
+}
+
+function snmp_check_servers () {
+    # check if the servers where started
+    if [ "$TRACE" == yes ]; then
+	$NOTE "ps snmp"
+	ps -ef | grep snmp
+	$NOTE "Check open ports"
+	netstat -tulpn | grep snmp
+    fi
+    show_logs
+}
+
+function snmp_start () {
+    if [ "$DEBUG" == yes ]; then
+	#snmptrapd_debug=-DALL
+	#snmptrapd_debug=-Dtrap,usm,tsm,dtlsudp,9:dtlsudp,9:dtlsudp:*,netsnmp_udp,netsnmp_udp6,udpbase:recv,netsnmp_ipv6,netsnmp_ipv4
+	#snmpd_debug=-DALL
+	snmpd_debug=-Ddtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,netsnmp_udp,netsnmp_udp6,udpbase:recv,netsnmp_ipv6,netsnmp_ipv4
+	SHOWLOGS=yes
+    fi
+
+    # Start snmp servers
+    snmpd_servers=()
+    snmptrapd_servers=()
+    if [ "$DTLSUDP4" == "yes" ]; then
+	snmpd_servers+=("dtlsudp:$IPv4_HOST:$DTLSUDP_PORT")
+	snmptrapd_servers+=("dtlsudp:$IPv4_HOST:$SNMPTRAPD_DTLSUDP_PORT")
+    fi
+    if [ "$DTLSUDP6" == "yes" ]; then
+	snmpd_servers+=("dtlsudp6:[$IPv6_HOST]:$DTLSUDP_PORT")
+	snmptrapd_servers+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
+    fi
+    snmptrapd $snmptrapd_debug -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID udp:162 ${snmptrapd_servers[@]}
+    snmpd $snmpd_debug $mibs -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID ${snmpd_servers[@]}
+}
+
+function snmp_get () {
+    host=$1
+    protocol_version=$2
+    community=$3
+    user=$4
+    pw=$5
+    option=$6
+    
+    oid=system.sysDescr.0
+
+    $NOTE "GET $host v$protocol_version $oid"
+    if [ $protocol_version == "3" ]; then
+	if [ "$option" == "" ]; then
+	    snmpget -v $protocol_version -a MD5 -A $pw -l authNoPriv -u $user $host $oid
+	else
+	    snmpget $option -v $protocol_version  $host $oid
+	fi
+    else
+	snmpget $option -v $protocol_version -c $community $host $oid
+    fi
+}
+
+function snmp_get_ip ()
+{
+    host=$1
+    get_option=$2
+
+    for p in $SNMP_PROTOCOLS; do
+	snmp_get $host $p $SNMP_COMMUNITY $PRIMEUSER $PRIMEPW "$get_option" 
+    done;
+}
+
+function snmp_trap_dtlsudp ()
+{
+    host=$1
+
+    trap_oid="NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatNotification"
+    oid=netSnmpExampleHeartbeatRate
+
+    #trap_debug="-d -Ddtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,netsnmp_udp,netsnmp_udp6,udpbase:recv,netsnmp_ipv6,netsnmp_ipv4,tsm,usm"
+    #trap_debug="-d -DAll"
+    $NOTE "TRAP $host v3"
+    #snmptrap -Lf snmptrap.log $trap_debug -v 3 $host "" $trap_oid $oid i 555
+    snmptrap -Lf snmptrap.log $trap_debug -e 80001f8880523983647b8b0357 -v 3 -a MD5 -A $pw -x AES -X $pw -l authPriv -u $TSMUSER $host "" $trap_oid $oid i 555
+    $NOTE "INFORM $host v3"
+    snmpinform -Lf snmpinform.log $trap_debug -v 3 $host "" $trap_oid $oid i 666
+}
+
+TCPDUMP_CAP=$TESTDIR/tcpdump.pcap
 function tcpdump_capture ()
 {
     interface=$1
@@ -47,129 +295,34 @@ function tcpdump_read ()
 	sleep $1
 	# workaround: need a last package to close the tcpdump capture
 	ping6 -c 1 ::1 >/dev/null
-	tcpdump -T snmp -r $TCPDUMP_CAP port $PORT
+
+	tcpdump -T snmp -r $TCPDUMP_CAP port $SNMPD_PORT or port $DTLSUDP_PORT
     fi
 }
 
-function create_cert ()
-{
-    $NOTE $FUNCNAME
-    if [ ! -d $CERTDIR ]; then
-	$NET_SNMP_CERT genca -I --cn $TESTCA -C $CERTDIR
-	$NET_SNMP_CERT gencert -I -t snmpd --with-ca $TESTCA --cn $TESTHOSTNAME -C $CERTDIR
-	$NET_SNMP_CERT gencert -I -t snmpapp --cn $TESTUSER -C $CERTDIR
-	chmod 755 $CERTDIR/tls $CERTDIR/tls/ca-certs $CERTDIR/tls/certs
-	chmod a+r $CERTDIR/tls/ca-certs/* $CERTDIR/tls/certs/*
-    fi
-}
-
-function get_cert ()
-{
-    $NOTE $FUNCNAME
-
-    serverCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpd -C $CERTDIR)
-    appCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpapp -C $CERTDIR)
-    caCert=$($NET_SNMP_CERT showcas --fingerprint --brief $TESTCA -C $CERTDIR)
-
-    echo serverCert: $serverCert
-    echo appCert:    $appCert
-    echo caCert:     $caCert
-}
-
-
-function create_snmpd_conf ()
-{
-    $NOTE $FUNCNAME
-
-    if [ ! -e $SNMPD_CONF ]; then
-	mkdir -p $TESTDIR
-	echo "[snmp] localCert $serverCert" > $SNMPD_CONF
-	echo "certSecName 10 $appCert --cn" >> $SNMPD_CONF
-#	echo "certSecName 20 $appCert --sn snmpapp" >> $SNMPD_CONF
-	echo "rwuser -s tsm $TESTUSER authpriv" >>$SNMPD_CONF
-    fi
-    echo --- $SNMPD_CONF
-    cat $SNMPD_CONF
-}
-
-function create_snmp_conf ()
-{
-    $NOTE $FUNCNAME
-
-    if [ ! -e $SNMP_CONF ]; then
-	echo "localCert $appCert" > $SNMP_CONF
-    fi
-    
-    echo --- $SNMP_CONF
-    cat $SNMP_CONF
-}
-
-function prepare ()
-{
-    create_cert
-    get_cert
-    create_snmpd_conf
-    create_snmp_conf
-}
-
-function export_env ()
-{
-    $NOTE $FUNCNAME
-
-    export SNMP_PERSISTENT_DIR=$TESTDIR/persist
-    export SNMPCONFPATH=$TESTDIR:$CERTDIR:$SNMP_PERSISTENT_DIR
-    mkdir -p $SNMP_PERSISTENT_DIR
-}
-
-function start_snmpd ()
-{
-    $NOTE $FUNCNAME
-
-    #snmpd_debug="-d -Ddtlsudp"
-    
-    snmpd $snmpd_debug -U -p $SNMPD_PID -Lf $SNMPD_LOG -C -c $SNMPD_CONF $SERVER
-    ps -ef | grep snmpd
-
-    cat $SNMPD_LOG
-}
-
-function test1 ()
-{
-    $NOTE $FUNCNAME their_identity=$serverCert
-
-    $SNMPSET -T their_identity=$serverCert $SERVER $OID s 'fingerprintIdentity'
-    $SNMPGET -T their_identity=$serverCert $SERVER $OID
-}
-
-
-function test2 ()
-{
-    $NOTE $FUNCNAME their_identity=snmpd
-
-    $SNMPSET -T their_identity=snmpd $SERVER $OID s 'filenameIdentity'
-    $SNMPGET -T their_identity=snmpd $SERVER $OID
-}
-
-function test3 ()
-{
-    $NOTE $FUNCNAME trust_cert=$caCert -T their_hostname=$TESTHOSTNAME
-
-    $SNMPSET -T trust_cert=$caCert -T their_hostname=$TESTHOSTNAME $SERVER $OID s 'hostnameIdentity'
-    $SNMPGET -T trust_cert=$caCert -T their_hostname=$TESTHOSTNAME $SERVER $OID
-}
-
-######################################################################
+###########################################
 # main
-
-killall snmpd
+snmp_kill
 
 prepare
-export_env
-start_snmpd
+
+snmp_start
+
+$NOTE $(date)
 
 tcpdump_capture lo 4
-test1
+if [ "$DTLSUDP4" == "yes" ]; then
+    echo ======== DTLSUDP4
+    snmp_get_ip dtlsudp:$IPv4_LO:$DTLSUDP_PORT "-T their_identity=$serverCert"
+    snmp_get_ip dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT "-T their_identity=$serverCert"
+    snmp_trap_dtlsudp dtlsudp:$IPv4_LO:$SNMPTRAPD_DTLSUDP_PORT
+fi
+if [ "$DTLSUDP6" == "yes" ]; then
+    echo ======== DTLSUDP6
+    snmp_get_ip dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT "-T their_identity=$serverCert"
+    snmp_get_ip dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT "-T their_identity=$serverCert" 
+    snmp_trap_dtlsudp dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT
+fi
 tcpdump_read 4
 
-test2
-test3
+snmp_check_servers
