@@ -485,8 +485,10 @@ fi
 tcpdump_read 4
 
 if [ "$REMOTE" == "yes" ]; then
-    remote_snmp_get_ip $IPv4_LO:$SNMPD_PORT
-    remote_snmp_get_ip $IPv4_DEV0:$SNMPD_PORT
+    if [ "$IPv4" == "yes" ]; then
+	remote_snmp_get_ip $IPv4_LO:$SNMPD_PORT
+	remote_snmp_get_ip $IPv4_DEV0:$SNMPD_PORT
+    fi
     if [ "$IPv6" == "yes" ]; then
 	remote_snmp_get_ip udp6:[$IPv6_LO]:$SNMPD_PORT
 	remote_snmp_get_ip udp6:[$IPv6_DEV0]:$SNMPD_PORT
@@ -501,10 +503,16 @@ if [ "$REMOTE" == "yes" ]; then
     fi
 fi
 
-#snmp_walk_ip $IPv4_LO:$SNMPD_PORT
-#snmp_walk_ip udp6:[$IPv6_LO]:$SNMPD_PORT
+#if [ "$IPv4" == "yes" ]; then
+    #snmp_walk_ip $IPv4_LO:$SNMPD_PORT
+#fi
+#if [ "$IPv6" == "yes" ]; then
+    #snmp_walk_ip udp6:[$IPv6_LO]:$SNMPD_PORT
+#fi
 
-snmp_trap_ip $IPv4_LO:$SNMPTRAPD_PORT
+if [ "$IPv4" == "yes" ]; then
+    snmp_trap_ip $IPv4_LO:$SNMPTRAPD_PORT
+fi
 if [ "$IPv6" == "yes" ]; then
     snmp_trap_ip udp6:[$IPv6_LO]:$SNMPTRAPD_PORT
 fi
