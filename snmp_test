@@ -109,27 +109,22 @@ function prepare_remote () {
 	if [ ! -e $PREPARE_REMOTE ]; then
 	    $NOTE "Preparing remote IP"
 	    ssh $REMOTE_IPv4 "killall snmptrapd"
-	    #ssh $REMOTE_IPv4 "ifconfig $REMOTE_IPDEV0 inet6 add $REMOTE_IPv6/128"
 	    ssh $REMOTE_IPv4 "ip -6 route add default dev $REMOTE_IPDEV0"
-	    ssh $REMOTE_IPv4 "ip -6 route add via $IPv6_DEV0 $IPv6_EXTRA"
-	    ssh $REMOTE_IPv4 "ip -4 route add via $IPv4_DEV0 $IPv4_EXTRA"
-	    ssh $REMOTE_IPv4 "mkdir -p /tmp/snmp/test/persist"
-	    scp -q $SNMPTRAPD_CONF $REMOTE_IPv4:/tmp/snmp/test
-	    if [ -e $SNMP_CONF ]; then
-		scp -q $SNMP_CONF $REMOTE_IPv4:/tmp/snmp/test
-	    fi
-	    if [ -e $CERTDIR ]; then
-		scp -q -r $CERTDIR $REMOTE_IPv4:/tmp/snmp/
-	    fi
-	    scp -q $SNMPENV $REMOTE_IPv4:/tmp/snmp/test
+	    ssh $REMOTE_IPv4 "ip -6 route add via $IPv6_DEV0 $IPv6_EXTRA dev $REMOTE_IPDEV0"
+	    ssh $REMOTE_IPv4 "ip -4 route add via $IPv4_DEV0 $IPv4_EXTRA dev $REMOTE_IPDEV0"
+	    ssh $REMOTE_IPv4 "rm -rf $TESTDIR $CERTDIR"
+	    ssh $REMOTE_IPv4 "mkdir -p $TESTDIR $CERTDIR"
+	    rsync -az $TESTDIR/ $REMOTE_IPv4:$TESTDIR
+	    rsync -az $CERTDIR/ $REMOTE_IPv4:$CERTDIR
 	    touch $PREPARE_REMOTE
 	fi
 	$NOTE "starting remote snmptrapd"
 	ssh $REMOTE_IPv4 "killall snmptrapd"
 	ssh $REMOTE_IPv4 "rm -f SNMPTRAPD_LOG SNMPTRAPD_PID"
-	echo "REMOTE: snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID udp:[IPv4_HOST]:$SNMPTRAPD_PORT udp6:[IPv6_HOST]:$SNMPTRAPD_PORT dtlsudp:[IPv4_HOST]:$SNMPTRAPD_DTLSUDP_PORT dtlsudp6:[IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT"
-	ssh $REMOTE_IPv4 snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID \
-	    udp:[IPv4_HOST]:$SNMPTRAPD_PORT udp6:[IPv6_HOST]:$SNMPTRAPD_PORT dtlsudp:[IPv4_HOST]:$SNMPTRAPD_DTLSUDP_PORT dtlsudp6:[IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT
+	echo "REMOTE: snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID\
+	    udp:$IPv4_HOST:$SNMPTRAPD_PORT udp6:[$IPv6_HOST]:$SNMPTRAPD_PORT dtlsudp:$IPv4_HOST:$SNMPTRAPD_DTLSUDP_PORT dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT"
+	ssh $REMOTE_IPv4 snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID\
+	    udp:$IPv4_HOST:$SNMPTRAPD_PORT udp6:[$IPv6_HOST]:$SNMPTRAPD_PORT dtlsudp:$IPv4_HOST:$SNMPTRAPD_DTLSUDP_PORT dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT
     fi
 }
 
@@ -581,7 +576,7 @@ function snmp_trap_remote_check () {
     else
 	diff --changed-group-format='%<%>' --unchanged-group-format='' $SNMPTRAPD_LOG.remote $SNMPTRAPD_LOG.remote.prev | grep $OID
     fi
-    remote_trap_status=$((trap_status + $?))
+    remote_trap_status=$((remote_trap_status + $?))
     cp $SNMPTRAPD_LOG.remote $SNMPTRAPD_LOG.remote.prev
 }
 
