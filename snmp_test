@@ -237,11 +237,10 @@ function create_snmptrapd_conf ()
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "" >> $conf
-	echo "[snmp] peerCert $trapdCert" >> $conf
+	echo "[snmp] localCert $serverCert" >> $conf
 	echo "[snmp] trustCert $caCert" >> $conf
 	echo "certSecName 9 $appCert --cn" >> $conf
 	echo "certSecName 100 $caCert  --rfc822" >> $conf
-	#echo 'createUser -e 80001f8880523983647b8b0358 $TSMUSER MD5 "kalle123" AES "kalle123"' >> $conf
 	echo "authuser log -s tsm $TSMUSER authpriv" >> $conf
     fi
     echo [snmp] $LOGTIMESTAMP >> $conf
@@ -258,7 +257,6 @@ function create_snmp_conf ()
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "localCert $appCert" >> $conf
-#	echo "peerCert  $trapdCert" >> $conf
 	echo "peerCert  $serverCert" >> $conf
     fi
     echo $LOGTIMESTAMP >> $conf
@@ -368,15 +366,15 @@ function tcpdump_read ()
 function snmp_get () {
     local host=$1
     local oid=system.sysDescr.0
-    #local trap_debug="-Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
-    #local trap_debug="-DALL -d"
+    #local get_debug="-Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
+    #local get_debug="-DALL -d"
 
     $NOTE "GET $host v$SNMP_PROTOCOL $oid"
     if [ $SNMP_PROTOCOL == "3" ]; then
 	echo $host | grep dtlsudp >/dev/null
 	if [ "$?" -eq 0 ]; then
 	    # TSM
-	    snmpget -Lf $SNMPGET_LOG $trap_debug -v $SNMP_PROTOCOL --defSecurityModel=tsm $host $oid
+	    snmpget -Lf $SNMPGET_LOG $get_debug -v $SNMP_PROTOCOL --defSecurityModel=tsm $host $oid
 	else
 	    # USM
 	    snmpget -v $SNMP_PROTOCOL -a MD5 -A $PRIMEPW -l authNoPriv -u $PRIMEUSER $host $oid
@@ -657,8 +655,7 @@ function f_trap()
     if [ "$DTLSUDP6" == "yes" ]; then
 	snmp_trap_dtlsudp dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT
 	snmp_trap_dtlsudp dtlsudp6:[$IPv6_EXTRA]:$SNMPTRAPD_DTLSUDP_PORT
-	# NOT WORKING
-	snmp_trap_dtlsudp dtlsudp6:[$IPv6_DEV0]:$SNMPTRAPD_DTLSUDP_PORT
+	snmp_trap_dtlsudp dtlsudp6:[$IPv6_DEV0%$IPDEV0]:$SNMPTRAPD_DTLSUDP_PORT
     fi
 }
 
