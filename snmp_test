@@ -56,10 +56,13 @@ DTLSUDP_PORT=10161
 LOGTIMESTAMP="logTimestamp 0"
 
 NET_SNMP_CERT=net-snmp-cert
-PRIMEUSER=primeuser
-TSMUSER=tsmuser
+
+TSM_USER=tsmuser
 PRIME_CA=ca.prime.com
-PRIMEPW=kalle123
+
+USM_USER=usmuser
+USM_PW=kalle123
+USM_EID=80001f8880523983647b8b0357
 
 IPv4_HOST=0.0.0.0
 IPv4_LO=127.0.0.1
@@ -168,8 +171,8 @@ function create_cert ()
 	hostname $LOCAL_HOSTNAME
 	$NET_SNMP_CERT genca -I -n $PRIME_CA -e admin@prime.com -C $CERTDIR
 	$NET_SNMP_CERT gencert -I -t snmpd --with-ca $PRIME_CA --cn $LOCAL_HOSTNAME -C $CERTDIR
-	$NET_SNMP_CERT gencert -I -t snmpapp --cn $TSMUSER -C $CERTDIR
-	$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TSMUSER -C $CERTDIR
+	$NET_SNMP_CERT gencert -I -t snmpapp --cn $TSM_USER -C $CERTDIR
+	$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TSM_USER -C $CERTDIR
 	#chmod 755 $CERTDIR/tls $CERTDIR/tls/ca-certs $CERTDIR/tls/certs
 	#chmod a+r $CERTDIR/tls/ca-certs/* $CERTDIR/tls/certs/*
     fi
@@ -185,8 +188,8 @@ function get_cert ()
     caCert=$($NET_SNMP_CERT showca --fingerprint --brief $PRIME_CA -C $CERTDIR)
 
     if [ "$TRACE" == "yes" ]; then
-	echo PRIMEUSER:  $PRIMEUSER
-	echo TSMUSER:    $TSMUSER
+	echo USM_USER:   $USM_USER
+	echo TSM_USER:   $TSM_USER
 	echo serverCert: $serverCert
 	echo appCert:    $appCert
 	echo trapdCert:  $trapdCert
@@ -204,24 +207,36 @@ function create_snmpd_conf ()
 
     cp $conf_in $conf
 
-    echo "createUser $PRIMEUSER MD5 $PRIMEPW DES $PRIMEPW" >> $conf
-    echo "rwuser $PRIMEUSER" >> $conf
+#    echo "[snmp] clientaddr [$IPv6_EXTRA]" >> $conf
+#    echo "[snmp] clientaddr $IPv4_EXTRA:11111" >> $conf
+    echo "createUser $USM_USER MD5 $USM_PW DES $USM_PW" >> $conf
+    echo "rwuser $USM_USER" >> $conf
+
+    echo "trapcommunity public" >> $conf
+    if [ $SNMP_PROTOCOL == "3" ]; then
+	echo "trapsess -Ci -v 3 -e $USM_EID -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER udp:$IPv4_LO:$SNMPTRAPD_PORT" >> $conf
+	echo "trapsess -Ci -v 3 -e $USM_EID -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER udp6:$IPv6_LO:$SNMPTRAPD_PORT" >> $conf
+	echo "trapsess -Ci -v 3 -e $USM_EID -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER udp:$REMOTE_IPv4:$SNMPTRAPD_PORT" >> $conf
+	echo "trapsess -Ci -v 3 -e $USM_EID -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER udp6:$REMOTE_IPv6:$SNMPTRAPD_PORT" >> $conf
+    elif [ $SNMP_PROTOCOL == "2c" ]; then
+	echo "trap2sink udp:$IPv4_LO:$SNMPTRAPD_PORT" >> $conf
+	echo "trap2sink udp6:[$IPv6_LO]:$SNMPTRAPD_PORT" >> $conf
+	echo "trap2sink udp:$REMOTE_IPv4:$SNMPTRAPD_PORT" >> $conf
+	echo "trap2sink udp6:[$REMOTE_IPv6]:$SNMPTRAPD_PORT" >> $conf
+    fi
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "[snmp] trustCert $caCert" >> $conf
 	echo "[snmp] localCert $serverCert" >> $conf
 	echo "certSecName 10 $appCert --cn" >> $conf
-	#echo "certSecName 20 $appCert --sn snmpapp" >> $conf
-	echo "rwuser -s tsm $TSMUSER authpriv" >> $conf
+	echo "rwuser -s tsm $TSM_USER authpriv" >> $conf
 
-#	if [ "$DTLSUDP4" == "yes" ]; then
-#	    echo trap2sink dtlsudp:localhost:$SNMPTRAPD_DTLSUDP_PORT public >> $conf
-#	    echo trapsess -Ci -v 3 dtlsudp:$SNMPTRAPD_DTLSUDP_PORT  >>$conf
-#	fi
-#	if [ "$DTLSUDP6" == "yes" ]; then
-#	    echo trap2sink dtlsudp6:[$IPv6_EXTRA]:$SNMPTRAPD_DTLSUDP_PORT public >> $conf
-#	    echo trapsess -Ci -v 3 dtlsudp6:[::]:$SNMPTRAPD_DTLSUDP_PORT  >>$conf
-#	fi
+	if [ "$DTLSUDP4" == "yes" ]; then
+	    echo "trapsess -v 3 -T localCert=$appCert -T peerCert=$serverCert dtlsudp:$IPv4_LO:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
+	fi
+	if [ "$DTLSUDP6" == "yes" ]; then
+	    echo "trapsess -v 3 -T localCert=$appCert -T peerCert=$serverCert dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
+	fi
     fi
     echo [snmp] $LOGTIMESTAMP >> $conf
 }
@@ -234,14 +249,15 @@ function create_snmptrapd_conf ()
     $NOTE $FUNCNAME
 
     cp $conf_in $conf
+    echo createUser -e $USM_EID $USM_USER MD5 \"$USM_PW\" AES \"$USM_PW\" >> $conf
+    echo "authUser log $USM_USER" >> $conf
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
-	echo "" >> $conf
-	echo "[snmp] localCert $serverCert" >> $conf
 	echo "[snmp] trustCert $caCert" >> $conf
+	echo "[snmp] localCert $serverCert" >> $conf
 	echo "certSecName 9 $appCert --cn" >> $conf
-	echo "certSecName 100 $caCert  --rfc822" >> $conf
-	echo "authuser log -s tsm $TSMUSER authpriv" >> $conf
+#	echo "certSecName 100 $caCert  --rfc822" >> $conf
+	echo "authuser log -s tsm $TSM_USER authpriv" >> $conf
     fi
     echo [snmp] $LOGTIMESTAMP >> $conf
 }
@@ -254,7 +270,7 @@ function create_snmp_conf ()
     $NOTE $FUNCNAME
 
     cp $conf_in $conf
-
+    echo "defCommunity $SNMP_COMMUNITY" >> $conf
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "localCert $appCert" >> $conf
 	echo "peerCert  $serverCert" >> $conf
@@ -377,10 +393,10 @@ function snmp_get () {
 	    snmpget -Lf $SNMPGET_LOG $get_debug -v $SNMP_PROTOCOL --defSecurityModel=tsm $host $oid
 	else
 	    # USM
-	    snmpget -v $SNMP_PROTOCOL -a MD5 -A $PRIMEPW -l authNoPriv -u $PRIMEUSER $host $oid
+	    snmpget -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host $oid
 	fi
     else
-	snmpget -v $SNMP_PROTOCOL -c $SNMP_COMMUNITY $host $oid
+	snmpget -v $SNMP_PROTOCOL $host $oid
     fi
     get_status=$((get_status + $?))
 }
@@ -426,10 +442,10 @@ function remote_snmp_get () {
 	if [ "$?" -eq 0 ]; then
 	    ssh $REMOTE_IPv4 "source $SNMPENV; snmpget -v $SNMP_PROTOCOL --defSecurityModel=tsm $host $oid"
 	else
-	    ssh $REMOTE_IPv4 "source $SNMPENV; snmpget -v $SNMP_PROTOCOL -a MD5 -A $PRIMEPW -l authNoPriv -u $PRIMEUSER $host $oid"
+	    ssh $REMOTE_IPv4 "source $SNMPENV; snmpget -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host $oid"
 	fi
     else
-	ssh $REMOTE_IPv4 "source $SNMPENV; snmpget -v $SNMP_PROTOCOL -c $SNMP_COMMUNITY $host $oid"
+	ssh $REMOTE_IPv4 "source $SNMPENV; snmpget -v $SNMP_PROTOCOL $host $oid"
     fi
     l_status=$?
     if [ "$REMOTE_TCPDUMP" == "yes" ]; then
@@ -475,10 +491,10 @@ function snmp_walk () {
 	if [ "$?" -eq 0 ]; then
 	    snmpwalk -v $SNMP_PROTOCOL --defSecurityModel=tsm $host . > $SNMPWALK_OUT
 	else
-	    snmpwalk -v $SNMP_PROTOCOL -a MD5 -A $PRIMEPW -l authNoPriv -u $PRIMEUSER $host . > $SNMPWALK_OUT
+	    snmpwalk -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host . > $SNMPWALK_OUT
 	fi
     else
-	snmpwalk -v $SNMP_PROTOCOL -c $SNMP_COMMUNITY $host > $SNMPWALK_OUT
+	snmpwalk -v $SNMP_PROTOCOL $host > $SNMPWALK_OUT
     fi
     l_status=$?
     if [ $l_status -eq 0 ]; then
@@ -523,10 +539,10 @@ function remote_snmp_walk () {
 	if [ "$?" -eq 0 ]; then
 	    ssh $REMOTE_IPv4 "source $SNMPENV; snmpwalk -v $SNMP_PROTOCOL --defSecurityModel=tsm $host . > $SNMPWALK_OUT"
 	else
-	    ssh $REMOTE_IPv4 "source $SNMPENV; snmpwalk -v $SNMP_PROTOCOL -a MD5 -A $PRIMEPW -l authNoPriv -u $PRIMEUSER $host . > $SNMPWALK_OUT"
+	    ssh $REMOTE_IPv4 "source $SNMPENV; snmpwalk -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host . > $SNMPWALK_OUT"
 	fi
     else
-	ssh $REMOTE_IPv4 "source $SNMPENV; snmpwalk -v $SNMP_PROTOCOL -c $SNMP_COMMUNITY $host > $SNMPWALK_OUT"
+	ssh $REMOTE_IPv4 "source $SNMPENV; snmpwalk -v $SNMP_PROTOCOL $host > $SNMPWALK_OUT"
     fi
     l_status=$?
     if [ $l_status -eq 0 ]; then
@@ -562,23 +578,23 @@ function f_remote_walk()
 
 function snmp_inform () {
     local host=$1
-    #local trap_debug=-Ddumph_send,dumpv_send,usm,tsm
+    #local inform_debug="-Lf $SNMPINFORM_LOG -Ddumph_send,dumpv_send,usm,tsm -d"
 
     $NOTE "INFORM $host v$SNMP_PROTOCOL"
-    snmpinform $trap_debug -Lf $SNMPINFORM_LOG -e 80001f8880523983647b8b0357 -v $SNMP_PROTOCOL -a MD5 -A $PRIMEPW -x AES -X $PRIMEPW -l authPriv -u $PRIMEUSER $host "" $TRAP_OID $OID i 444
+    snmpinform $inform_debug -e $USM_EID -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER $host "" $TRAP_OID $OID i 444
 }
 
 function snmp_trap () {
     local host=$1
-    #local trap_debug=-Ddumph_send,dumpv_send,usm,tsm
+    #local trap_debug="-Lf $SNMPTRAP_LOG -Dtrap,usm,tsm -d"
 
     $NOTE "TRAP $host v$SNMP_PROTOCOL"
     if [ $SNMP_PROTOCOL == "1" ]; then
-	snmptrap $trap_debug -Lf $SNMPTRAP_LOG -v $SNMP_PROTOCOL -c $SNMP_COMMUNITY $host $TRAP_OID ""  6 17 ""  $OID i 111
+	snmptrap $trap_debug -v $SNMP_PROTOCOL $host $TRAP_OID ""  6 17 ""  $OID i 111
     elif [ $SNMP_PROTOCOL == "2c" ]; then
-	snmptrap $trap_debug -Lf $SNMPTRAP_LOG -v $SNMP_PROTOCOL -c $SNMP_COMMUNITY $host "" $TRAP_OID $OID i 222
+	snmptrap $trap_debug -v $SNMP_PROTOCOL $host "" $TRAP_OID $OID i 222
     elif [ $SNMP_PROTOCOL == "3" ]; then
-	snmptrap $trap_debug -Lf $SNMPTRAP_LOG -e 80001f8880523983647b8b0357 -v $SNMP_PROTOCOL -a MD5 -A $PRIMEPW -x AES -X $PRIMEPW -l authPriv -u $PRIMEUSER $host "" $TRAP_OID $OID i 333
+	snmptrap $trap_debug -e $USM_EID -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER $host "" $TRAP_OID $OID i 333
     fi
 }
 
@@ -623,24 +639,25 @@ function snmp_trap_ip ()
 function snmp_trap_dtlsudp ()
 {
     local host=$1
-#    local trap_debug="-Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
+#    local trap_debug="-Lf $SNMPTRAP_LOG -Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
 
     # NOT WORKING
     $NOTE "TRAP $host v3"
-    snmptrap -Lf $SNMPTRAP_LOG $trap_debug -v $SNMP_PROTOCOL $host "" $TRAP_OID $OID i 555
+    echo snmptrap  $trap_debug -v $SNMP_PROTOCOL -l authPriv -r 1 -T localCert=$appCert -T peerCert=$serverCert $host "" $TRAP_OID $OID i 555
+    snmptrap  $trap_debug -v $SNMP_PROTOCOL -l authPriv -r 1 -T localCert=$appCert -T peerCert=$serverCert $host "" $TRAP_OID $OID i 555
     snmp_trap_check
 
     $NOTE "INFORM $host v3"
-    snmpinform -Lf $SNMPINFORM_LOG $trap_debug -v $SNMP_PROTOCOL $host "" $TRAP_OID $OID i 666
+    snmpinform $trap_debug -v $SNMP_PROTOCOL $host "" $TRAP_OID $OID i 666
     snmp_trap_check
 }
 
 function f_trap()
 {
     if [ "$IPv4" == "yes" ]; then
-	snmp_trap_ip $IPv4_LO:$SNMPTRAPD_PORT
-	snmp_trap_ip $IPv4_EXTRA:$SNMPTRAPD_PORT
-	snmp_trap_ip $IPv4_DEV0:$SNMPTRAPD_PORT
+	snmp_trap_ip udp:$IPv4_LO:$SNMPTRAPD_PORT
+	snmp_trap_ip udp:$IPv4_EXTRA:$SNMPTRAPD_PORT
+	snmp_trap_ip udp:$IPv4_DEV0:$SNMPTRAPD_PORT
     fi
     if [ "$IPv6" == "yes" ]; then
 	snmp_trap_ip udp6:[$IPv6_LO]:$SNMPTRAPD_PORT
