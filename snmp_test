@@ -68,12 +68,12 @@ USM_EID=80001f8880523983647b8b0357
 IPv4_HOST=0.0.0.0
 IPv4_LO=127.0.0.1
 IPv4_EXTRA=172.16.1.100
-IPv4_DEV0=$(ip -o -4 addr list $IPDEV0 | awk '{print $4}' | cut -d/ -f1)
+IPv4_DEV0=$(ip -o -4 addr list $IPDEV0 | head -1 | awk '{print $4}' | cut -d/ -f1)
 
 IPv6_HOST=::
 IPv6_LO=::1
 IPv6_EXTRA=2001:1b70:82a8:90:e085::10
-IPv6_DEV0=$(ip -o -6 addr list $IPDEV0 | awk '{print $4}' | cut -d/ -f1)
+IPv6_DEV0=$(ip -o -6 addr list $IPDEV0 | head -1 | awk '{print $4}' | cut -d/ -f1)
 
 NOTE='echo -e \n--- '
 HEAD="head -3"
@@ -407,7 +407,8 @@ function tcpdump_read ()
 function snmp_get () {
     local host=$1
     local oid=system.sysDescr.0
-    #local get_debug="-Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
+    #local get_debug="-Lf $SNMPGET_LOG -Dtsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
+    local get_debug="-Lf $SNMPGET_LOG -d"
     #local get_debug="-DALL -d"
 
     $NOTE "GET $host v$SNMP_PROTOCOL $oid"
@@ -415,7 +416,7 @@ function snmp_get () {
 	echo $host | grep dtlsudp >/dev/null
 	if [ "$?" -eq 0 ]; then
 	    # TSM
-	    $BASH "snmpget -Lf $SNMPGET_LOG $get_debug -v $SNMP_PROTOCOL --defSecurityModel=tsm $host $oid"
+	    $BASH "snmpget $get_debug -v $SNMP_PROTOCOL --defSecurityModel=tsm $host $oid"
 	else
 	    # USM
 	    $BASH "snmpget -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host $oid"
@@ -654,6 +655,11 @@ function snmp_trap_ip ()
 
     snmp_trap $host
     snmp_trap_check
+}
+
+function snmp_inform_ip ()
+{
+    local host=$1
 
     if [ $SNMP_PROTOCOL == "3" ]; then
 	snmp_inform $host
@@ -661,18 +667,11 @@ function snmp_trap_ip ()
     fi
 }
 
-function snmp_trap_dtlsudp ()
+function snmp_inform_dtlsudp ()
 {
     local host=$1
-#    local trap_debug="-Lf $SNMPTRAP_LOG -Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
 #    local inform_debug="-Lf $SNMPINFORM_LOG -Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
-#    local trap_debug="-Lf $SNMPTRAP_LOG -DALL -d"
 #    local inform_debug="-Lf $SNMPINFORM_LOG -DALL -d"
-
-# NOT WORKING
-#    $NOTE "TRAP $host v3"
-#    $BASH "snmptrap  $trap_debug -e $USM_EID -l authPriv -r 1 -v 3 -T localCert=$appCert -T peerCert=$serverCert $host \"\" $TRAP_OID $OID i 555"
-#    snmp_trap_check
 
     $NOTE "INFORM $host v3"
     $BASH "snmpinform $inform_debug -l authPriv -r 1 -v 3 $host \"\" $TRAP_OID $OID i 666"
@@ -685,21 +684,27 @@ function f_trap()
 	snmp_trap_ip udp:$IPv4_LO:$SNMPTRAPD_PORT
 	snmp_trap_ip udp:$IPv4_EXTRA:$SNMPTRAPD_PORT
 	snmp_trap_ip udp:$IPv4_DEV0:$SNMPTRAPD_PORT
+	snmp_inform_ip udp:$IPv4_LO:$SNMPTRAPD_PORT
+	snmp_inform_ip udp:$IPv4_EXTRA:$SNMPTRAPD_PORT
+	snmp_inform_ip udp:$IPv4_DEV0:$SNMPTRAPD_PORT
     fi
     if [ "$IPv6" == "yes" ]; then
 	snmp_trap_ip udp6:[$IPv6_LO]:$SNMPTRAPD_PORT
 	snmp_trap_ip udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT
 	snmp_trap_ip udp6:[$IPv6_DEV0%$IPDEV0]:$SNMPTRAPD_PORT
+	snmp_inform_ip udp6:[$IPv6_LO]:$SNMPTRAPD_PORT
+	snmp_inform_ip udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT
+	snmp_inform_ip udp6:[$IPv6_DEV0%$IPDEV0]:$SNMPTRAPD_PORT
     fi
     if [ "$DTLSUDP4" == "yes" ]; then
-	snmp_trap_dtlsudp dtlsudp:$IPv4_LO:$SNMPTRAPD_DTLSUDP_PORT
-	snmp_trap_dtlsudp dtlsudp:$IPv4_EXTRA:$SNMPTRAPD_DTLSUDP_PORT
-	snmp_trap_dtlsudp dtlsudp:$IPv4_DEV0:$SNMPTRAPD_DTLSUDP_PORT
+	snmp_inform_dtlsudp dtlsudp:$IPv4_LO:$SNMPTRAPD_DTLSUDP_PORT
+	snmp_inform_dtlsudp dtlsudp:$IPv4_EXTRA:$SNMPTRAPD_DTLSUDP_PORT
+	snmp_inform_dtlsudp dtlsudp:$IPv4_DEV0:$SNMPTRAPD_DTLSUDP_PORT
     fi
     if [ "$DTLSUDP6" == "yes" ]; then
-	snmp_trap_dtlsudp dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT
-	snmp_trap_dtlsudp dtlsudp6:[$IPv6_EXTRA]:$SNMPTRAPD_DTLSUDP_PORT
-	snmp_trap_dtlsudp dtlsudp6:[$IPv6_DEV0%$IPDEV0]:$SNMPTRAPD_DTLSUDP_PORT
+	snmp_inform_dtlsudp dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT
+	snmp_inform_dtlsudp dtlsudp6:[$IPv6_EXTRA]:$SNMPTRAPD_DTLSUDP_PORT
+	snmp_inform_dtlsudp dtlsudp6:[${IPv6_DEV0}%${IPDEV0}]:$SNMPTRAPD_DTLSUDP_PORT
     fi
 }
 
@@ -709,6 +714,11 @@ function snmp_trap_remote_ip ()
 
     snmp_trap $host
     snmp_trap_remote_check
+}
+
+function snmp_inform_remote_ip ()
+{
+    local host=$1
 
     if [ $SNMP_PROTOCOL == "3" ]; then
 	snmp_inform $host
@@ -716,18 +726,11 @@ function snmp_trap_remote_ip ()
     fi
 }
 
-function snmp_trap_remote_dtlsudp ()
+function snmp_inform_remote_dtlsudp ()
 {
     local host=$1
-#    local trap_debug="-Lf $SNMPTRAP_LOG.remote -Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
 #    local inform_debug="-Lf $SNMPINFORM_LOG.remote -Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
-#    local trap_debug="-Lf $SNMPTRAP_LOG.remote -DALL -d"
 #    local inform_debug="-Lf $SNMPINFORM_LOG.remote -DALL -d"
-
-# NOT WORKING
-#    $NOTE "REMOTE TRAP $host v3"
-#    $BASH "snmptrap $trap_debug -l authPriv -r 1 -v 3 $host \"\" $TRAP_OID $OID i 555"
-#    snmp_trap_remote_check
 
     $NOTE "REMOTE INFORM $host v3"
     $BASH "snmpinform $inform_debug -l authPriv -r 1 -v 3 $host \"\" $TRAP_OID $OID i 666"
@@ -740,15 +743,17 @@ function f_remote_trap()
 	tcpdump_capture any 4
 	if [ "$IPv4" == "yes" ]; then
 	    snmp_trap_remote_ip $REMOTE_IPv4:$SNMPTRAPD_PORT
+	    snmp_inform_remote_ip $REMOTE_IPv4:$SNMPTRAPD_PORT
 	fi
 	if [ "$IPv6" == "yes" ]; then
 	    snmp_trap_remote_ip udp6:[$REMOTE_IPv6%$IPDEV0]:$SNMPTRAPD_PORT
+	    snmp_inform_remote_ip udp6:[$REMOTE_IPv6%$IPDEV0]:$SNMPTRAPD_PORT
 	fi
 	if [ "$DTLSUDP4" == "yes" ]; then
-	    snmp_trap_remote_dtlsudp dtlsudp:$REMOTE_IPv4:$SNMPTRAPD_DTLSUDP_PORT
+	    snmp_inform_remote_dtlsudp dtlsudp:$REMOTE_IPv4:$SNMPTRAPD_DTLSUDP_PORT
 	fi
 	if [ "$DTLSUDP6" == "yes" ]; then
-	    snmp_trap_remote_dtlsudp dtlsudp6:[$REMOTE_IPv6%$IPDEV0]:$SNMPTRAPD_DTLSUDP_PORT
+	    snmp_inform_remote_dtlsudp dtlsudp6:[$REMOTE_IPv6%$IPDEV0]:$SNMPTRAPD_DTLSUDP_PORT
 	fi
 	tcpdump_read 4
     fi
