@@ -16,6 +16,7 @@
 [ -z "$DEBUG" ] && DEBUG=no
 [ -z "$SNMP_PROTOCOL" ] && SNMP_PROTOCOL="3"
 [ -z "$SETX" ] && SETX=""
+[ -z "$EXTRA" ] && EXTRA="yes"
 
 [ -z "$IPDEV0" ] && IPDEV0=eth0
 [ -z "$LOCAL_HOSTNAME" ] && LOCAL_HOSTNAME=amarillo1.prime.com
@@ -125,8 +126,10 @@ function prepare_remote () {
 	    $SSH_REMOTE "hostname $REMOTE_HOSTNAME"
 	    $SSH_REMOTE "killall snmptrapd"
 	    $SSH_REMOTE "ip -6 route add default dev $REMOTE_IPDEV0"
-	    $SSH_REMOTE "ip -6 route add via $IPv6_DEV0 $IPv6_EXTRA dev $REMOTE_IPDEV0"
-	    $SSH_REMOTE "ip -4 route add via $IPv4_DEV0 $IPv4_EXTRA dev $REMOTE_IPDEV0"
+	    if [ "$EXTRA" == "yes" ]; then
+		$SSH_REMOTE "ip -6 route add via $IPv6_DEV0 $IPv6_EXTRA dev $REMOTE_IPDEV0"
+		$SSH_REMOTE "ip -4 route add via $IPv4_DEV0 $IPv4_EXTRA dev $REMOTE_IPDEV0"
+	    fi
 	    $SSH_REMOTE "rm -rf $TESTDIR $CERTDIR"
 	    $SSH_REMOTE "mkdir -p $TESTDIR $CERTDIR $SNMP_PERSISTENT_DIR"
 	    rsync -az $TESTDIR/ $REMOTE_IPv4:$TESTDIR
@@ -149,14 +152,15 @@ function prepare_remote () {
 PREPARE_IP=$TESTDIR/prepare_ip
 function prepare_ip () {
     $NOTE $FUNCNAME
-
-    if [ ! -e $PREPARE_IP ]; then
-	$NOTE "Preparing ip addresses"
-	ifconfig lo inet add $IPv4_EXTRA
-	ifconfig lo inet6 add $IPv6_EXTRA/128
-	touch $PREPARE_IP
-    else
-	$NOTE "IP addresses already prepared"
+    if [ "$EXTRA" == "yes" ]; then
+	if [ ! -e $PREPARE_IP ]; then
+	    $NOTE "Preparing ip addresses"
+	    ifconfig lo inet add $IPv4_EXTRA
+	    ifconfig lo inet6 add $IPv6_EXTRA/128
+	    touch $PREPARE_IP
+	else
+	    $NOTE "IP addresses already prepared"
+	fi
     fi
 }
 
@@ -361,7 +365,9 @@ function snmp_start () {
 	snmptrapd_servers+=("udp:$SNMPTRAPD_PORT")
     fi
     if [ "$IPv6" == "yes" ]; then
-	snmpd_servers+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
+	if [ "$EXTRA" == "yes" ]; then
+	    snmpd_servers+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
+	fi
 	snmpd_servers+=("udp6:[$IPv6_HOST]:$SNMPD_PORT")
 	snmptrapd_servers+=("udp6:$SNMPTRAPD_PORT")
     fi
@@ -432,23 +438,34 @@ function f_get()
     tcpdump_capture any 4
     if [ "$IPv4" == "yes" ]; then
 	snmp_get $IPv4_LO:$SNMPD_PORT
-	snmp_get $IPv4_EXTRA:$SNMPD_PORT
 	snmp_get $IPv4_DEV0:$SNMPD_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_get $IPv4_EXTRA:$SNMPD_PORT
+	fi
     fi
+    
     if [ "$IPv6" == "yes" ]; then
 	snmp_get udp6:[$IPv6_LO]:$SNMPD_PORT
-	snmp_get udp6:[$IPv6_EXTRA]:$SNMPD_PORT
 	snmp_get udp6:[$IPv6_DEV0]:$SNMPD_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_get udp6:[$IPv6_EXTRA]:$SNMPD_PORT
+	fi
     fi
+    
     if [ "$DTLSUDP4" == "yes" ]; then
 	snmp_get dtlsudp:$IPv4_LO:$DTLSUDP_PORT
-	snmp_get dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
 	snmp_get dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_get dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
+	fi
     fi
+    
     if [ "$DTLSUDP6" == "yes" ]; then
 	snmp_get dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT
-	snmp_get dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
 	snmp_get dtlsudp6:[$IPv6_DEV0%$IPDEV0]:$DTLSUDP_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_get dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
+	fi
     fi
     tcpdump_read 4
 }
@@ -486,22 +503,28 @@ function f_remote_get()
     if [ "$REMOTE" == "yes" ]; then
 	tcpdump_capture any 4
 	if [ "$IPv4" == "yes" ]; then
-	    remote_snmp_get $IPv4_EXTRA:$SNMPD_PORT
 	    remote_snmp_get $IPv4_DEV0:$SNMPD_PORT
+	    if [ "$EXTRA" == "yes" ]; then
+		remote_snmp_get $IPv4_EXTRA:$SNMPD_PORT
+	    fi
 	fi
 	if [ "$IPv6" == "yes" ]; then
-	    remote_snmp_get udp6:[$IPv6_EXTRA]:$SNMPD_PORT
 	    remote_snmp_get udp6:[$IPv6_DEV0]:$SNMPD_PORT
+	    if [ "$EXTRA" == "yes" ]; then
+		remote_snmp_get udp6:[$IPv6_EXTRA]:$SNMPD_PORT
+	    fi
 	fi
 	if [ "$DTLSUDP4" == "yes" ]; then
-	    # NOT WORKING
-	    remote_snmp_get dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
 	    remote_snmp_get dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT
+	    if [ "$EXTRA" == "yes" ]; then
+		remote_snmp_get dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
+	    fi
 	fi
 	if [ "$DTLSUDP6" == "yes" ]; then
-	    # NOT WORKING
-	    remote_snmp_get dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
 	    remote_snmp_get dtlsudp6:[$IPv6_DEV0%$REMOTE_IPDEV0]:$DTLSUDP_PORT
+	    if [ "$EXTRA" == "yes" ]; then
+		remote_snmp_get dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
+	    fi
 	fi
 	tcpdump_read 4
     fi
@@ -534,23 +557,31 @@ function f_walk()
 {
     if [ "$IPv4" == "yes" ]; then
 	snmp_walk $IPv4_LO:$SNMPD_PORT
-	snmp_walk $IPv4_EXTRA:$SNMPD_PORT
 	snmp_walk $IPv4_DEV0:$SNMPD_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_walk $IPv4_EXTRA:$SNMPD_PORT
+	fi
     fi
     if [ "$IPv6" == "yes" ]; then
 	snmp_walk udp6:[$IPv6_LO]:$SNMPD_PORT
-	snmp_walk udp6:[$IPv6_EXTRA]:$SNMPD_PORT
 	snmp_walk udp6:[$IPv6_DEV0]:$SNMPD_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_walk udp6:[$IPv6_EXTRA]:$SNMPD_PORT
+	fi
     fi
     if [ "$DTLSUDP4" == "yes" ]; then
 	snmp_walk dtlsudp:$IPv4_LO:$DTLSUDP_PORT
-	snmp_walk dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
 	snmp_walk dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_walk dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
+	fi
     fi
     if [ "$DTLSUDP6" == "yes" ]; then
 	snmp_walk dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT
-	snmp_walk dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
 	snmp_walk dtlsudp6:[$IPv6_DEV0%$IPDEV0]:$DTLSUDP_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_walk dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
+	fi
     fi
 }
 
@@ -582,20 +613,28 @@ function f_remote_walk()
 {
     if [ "$REMOTE" == "yes" ]; then
 	if [ "$IPv4" == "yes" ]; then
-	    remote_snmp_walk $IPv4_EXTRA:$SNMPD_PORT
 	    remote_snmp_walk $IPv4_DEV0:$SNMPD_PORT
+	    if [ "$EXTRA" == "yes" ]; then
+		remote_snmp_walk $IPv4_EXTRA:$SNMPD_PORT
+	    fi
 	fi
 	if [ "$IPv6" == "yes" ]; then
-	    remote_snmp_walk udp6:[$IPv6_EXTRA]:$SNMPD_PORT
 	    remote_snmp_walk udp6:[$IPv6_DEV0]:$SNMPD_PORT
+	    if [ "$EXTRA" == "yes" ]; then
+		remote_snmp_walk udp6:[$IPv6_EXTRA]:$SNMPD_PORT
+	    fi
 	fi
 	if [ "$DTLSUDP4" == "yes" ]; then
-	    remote_snmp_walk dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
 	    remote_snmp_walk dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT
+	    if [ "$EXTRA" == "yes" ]; then
+		remote_snmp_walk dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
+	    fi
 	fi
 	if [ "$DTLSUDP6" == "yes" ]; then
-	    remote_snmp_walk dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
 	    remote_snmp_walk dtlsudp6:[$IPv6_DEV0%$REMOTE_IPDEV0]:$DTLSUDP_PORT
+	    if [ "$EXTRA" == "yes" ]; then
+		remote_snmp_walk dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
+	    fi
 	fi
     fi
 }
@@ -682,29 +721,41 @@ function f_trap()
 {
     if [ "$IPv4" == "yes" ]; then
 	snmp_trap_ip udp:$IPv4_LO:$SNMPTRAPD_PORT
-	snmp_trap_ip udp:$IPv4_EXTRA:$SNMPTRAPD_PORT
 	snmp_trap_ip udp:$IPv4_DEV0:$SNMPTRAPD_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_trap_ip udp:$IPv4_EXTRA:$SNMPTRAPD_PORT
+	fi
 	snmp_inform_ip udp:$IPv4_LO:$SNMPTRAPD_PORT
-	snmp_inform_ip udp:$IPv4_EXTRA:$SNMPTRAPD_PORT
 	snmp_inform_ip udp:$IPv4_DEV0:$SNMPTRAPD_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_inform_ip udp:$IPv4_EXTRA:$SNMPTRAPD_PORT
+	fi
     fi
     if [ "$IPv6" == "yes" ]; then
 	snmp_trap_ip udp6:[$IPv6_LO]:$SNMPTRAPD_PORT
-	snmp_trap_ip udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT
 	snmp_trap_ip udp6:[$IPv6_DEV0%$IPDEV0]:$SNMPTRAPD_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_trap_ip udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT
+	fi
 	snmp_inform_ip udp6:[$IPv6_LO]:$SNMPTRAPD_PORT
-	snmp_inform_ip udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT
 	snmp_inform_ip udp6:[$IPv6_DEV0%$IPDEV0]:$SNMPTRAPD_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_inform_ip udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT
+	fi
     fi
     if [ "$DTLSUDP4" == "yes" ]; then
 	snmp_inform_dtlsudp dtlsudp:$IPv4_LO:$SNMPTRAPD_DTLSUDP_PORT
-	snmp_inform_dtlsudp dtlsudp:$IPv4_EXTRA:$SNMPTRAPD_DTLSUDP_PORT
 	snmp_inform_dtlsudp dtlsudp:$IPv4_DEV0:$SNMPTRAPD_DTLSUDP_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_inform_dtlsudp dtlsudp:$IPv4_EXTRA:$SNMPTRAPD_DTLSUDP_PORT
+	fi
     fi
     if [ "$DTLSUDP6" == "yes" ]; then
 	snmp_inform_dtlsudp dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT
-	snmp_inform_dtlsudp dtlsudp6:[$IPv6_EXTRA]:$SNMPTRAPD_DTLSUDP_PORT
 	snmp_inform_dtlsudp dtlsudp6:[${IPv6_DEV0}%${IPDEV0}]:$SNMPTRAPD_DTLSUDP_PORT
+	if [ "$EXTRA" == "yes" ]; then
+	    snmp_inform_dtlsudp dtlsudp6:[$IPv6_EXTRA]:$SNMPTRAPD_DTLSUDP_PORT
+	fi
     fi
 }
 
