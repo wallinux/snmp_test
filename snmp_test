@@ -16,14 +16,14 @@
 [ -z "$DEBUG" ] && DEBUG=no
 [ -z "$SNMP_PROTOCOL" ] && SNMP_PROTOCOL="3"
 [ -z "$SETX" ] && SETX=""
-[ -z "$EXTRA" ] && EXTRA="yes"
+[ -z "$EXTRA" ] && EXTRA="no"
 
 [ -z "$IPDEV0" ] && IPDEV0=eth0
 [ -z "$LOCAL_HOSTNAME" ] && LOCAL_HOSTNAME=amarillo1.prime.com
 
 [ -z "$REMOTE_IPDEV0" ] && REMOTE_IPDEV0=eth0
-[ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.181
-[ -z "$REMOTE_IPv6" ] && REMOTE_IPv6=2001:1b70:82a8:90:1284:31:0:4
+[ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.182
+[ -z "$REMOTE_IPv6" ] && REMOTE_IPv6=2001:1b70:82a8:90:1284:31:0:182
 [ -z "$REMOTE_HOSTNAME" ] && REMOTE_HOSTNAME=amarillo2.prime.com
 
 #####################################################################
@@ -117,7 +117,6 @@ function prepare () {
 PREPARE_REMOTE=$TESTDIR/prepare_remote
 function prepare_remote () {
     #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
-    local snmptrapd_servers=()
 
     if [ "$REMOTE" == "yes" ]; then
 	if [ ! -e $PREPARE_REMOTE ]; then
@@ -136,6 +135,7 @@ function prepare_remote () {
 	    rsync -az $CERTDIR/ $REMOTE_IPv4:$CERTDIR
 	    touch $PREPARE_REMOTE
 	fi
+	local snmptrapd_servers=()
 	snmptrapd_servers+=("udp:$SNMPTRAPD_PORT")
 	snmptrapd_servers+=("udp6:$SNMPTRAPD_PORT")
 	snmptrapd_servers+=("dtlsudp:$IPv4_HOST:$SNMPTRAPD_DTLSUDP_PORT")
@@ -155,7 +155,7 @@ function prepare_ip () {
     IPv6_DEV0=$(ip -o -6 addr list $IPDEV0 | grep global | head -1 | awk '{print $4}' | cut -d/ -f1)
     if [ -z $IPv6_DEV0 ]; then
 	# set global IPv6
-	IPv6_DEV0=2001:1b70:82a8:90:1284:31:0:2
+	IPv6_DEV0=2001:1b70:82a8:90:1284:31:0:181
 	ifconfig $IPDEV0 inet6 add $IPv6_DEV0/80
     fi
 
@@ -193,8 +193,6 @@ function create_cert ()
 	$NET_SNMP_CERT gencert -I -t snmpd --with-ca $PRIME_CA --cn $LOCAL_HOSTNAME -C $CERTDIR
 	$NET_SNMP_CERT gencert -I -t snmpapp --cn $TSM_USER -C $CERTDIR
 	$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TSM_USER -C $CERTDIR
-	#chmod 755 $CERTDIR/tls $CERTDIR/tls/ca-certs $CERTDIR/tls/certs
-	#chmod a+r $CERTDIR/tls/ca-certs/* $CERTDIR/tls/certs/*
     fi
 }
 
@@ -227,9 +225,11 @@ function create_snmpd_conf ()
 
     cp $conf_in $conf
 
+##    echo "[snmp] clientaddr [$IPv6_DEV0]" >> $conf
 ##    echo "[snmp] clientaddr [$IPv6_EXTRA]" >> $conf
-##    echo "[snmp] clientaddr $IPv4_EXTRA" >> $conf
 ##    echo "[snmp] clientaddr $IPv4_DEV0" >> $conf
+    echo "[snmp] clientaddr $IPv4_EXTRA" >> $conf
+
     echo "createUser $USM_USER MD5 $USM_PW DES $USM_PW" >> $conf
     echo "rwuser $USM_USER" >> $conf
     echo "trapcommunity public" >> $conf
@@ -301,13 +301,11 @@ function create_snmp_conf ()
 
     cp $conf_in $conf
     echo "defCommunity $SNMP_COMMUNITY" >> $conf
-#    echo "clientaddr $IPv4_EXTRA" >> $conf
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "localCert $appCert" >> $conf
 	echo "peerCert  $serverCert" >> $conf
     fi
     echo $LOGTIMESTAMP >> $conf
-
 }
 
 SNMPENV=$TESTDIR/snmpenv
@@ -380,10 +378,12 @@ function snmp_start () {
     fi
     if [ "$DTLSUDP4" == "yes" ]; then
 	snmpd_servers+=("dtlsudp:$IPv4_HOST:$DTLSUDP_PORT")
+	snmpd_servers+=("dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT")
 	snmptrapd_servers+=("dtlsudp:$IPv4_HOST:$SNMPTRAPD_DTLSUDP_PORT")
     fi
     if [ "$DTLSUDP6" == "yes" ]; then
 	snmpd_servers+=("dtlsudp6:[$IPv6_HOST]:$DTLSUDP_PORT")
+	snmpd_servers+=("dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT")
 	snmptrapd_servers+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
     fi
 
@@ -412,7 +412,6 @@ function tcpdump_read ()
 	sleep $1
 	# workaround: need a last package to close the tcpdump capture
 	ping6 -c 1 ::1 >/dev/null
-
 	tcpdump -T snmp -r $TCPDUMP_CAP port $SNMPD_PORT or port $DTLSUDP_PORT
     fi
 }
@@ -490,12 +489,12 @@ function remote_snmp_get () {
     if [ $SNMP_PROTOCOL == "3" ]; then
 	echo $host | grep dtlsudp >/dev/null
 	if [ "$?" -eq 0 ]; then
-	    $SSH_REMOTE "source $SNMPENV; snmpget -v $SNMP_PROTOCOL --defSecurityModel=tsm $host $oid"
+	    $SSH_REMOTE "source $SNMPENV; $BASH \"snmpget -v $SNMP_PROTOCOL --defSecurityModel=tsm $host $oid\""
 	else
-	    $SSH_REMOTE "source $SNMPENV; snmpget -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host $oid"
+	    $SSH_REMOTE "source $SNMPENV; $BASH \"snmpget -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host $oid\""
 	fi
     else
-	$SSH_REMOTE "source $SNMPENV; snmpget -v $SNMP_PROTOCOL $host $oid"
+	$SSH_REMOTE "source $SNMPENV; $BASH \"snmpget -v $SNMP_PROTOCOL $host $oid\""
     fi
     l_status=$?
     if [ "$REMOTE_TCPDUMP" == "yes" ]; then
