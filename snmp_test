@@ -19,12 +19,12 @@
 [ -z "$EXTRA" ] && EXTRA="no"
 
 [ -z "$IPDEV0" ] && IPDEV0=eth0
-[ -z "$LOCAL_HOSTNAME" ] && LOCAL_HOSTNAME=amarillo1.prime.com
+[ -z "$LOCAL_HOSTNAME" ] && LOCAL_HOSTNAME=amarillo2.prime.com
 
 [ -z "$REMOTE_IPDEV0" ] && REMOTE_IPDEV0=eth0
-[ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.182
-[ -z "$REMOTE_IPv6" ] && REMOTE_IPv6=2001:1b70:82a8:90:1284:31:0:182
-[ -z "$REMOTE_HOSTNAME" ] && REMOTE_HOSTNAME=amarillo2.prime.com
+[ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.149
+[ -z "$REMOTE_IPv6" ] && REMOTE_IPv6=2001:1b70:82a8:90:1284:31:0:149
+[ -z "$REMOTE_HOSTNAME" ] && REMOTE_HOSTNAME=victoria2.prime.com
 
 #####################################################################
 TESTDIR=/tmp/snmp/test
@@ -344,58 +344,105 @@ function snmp_check_servers () {
     show_logs
 }
 
-function snmp_start () {
-    $NOTE $FUNCNAME
-    local snmpd_servers=()
-    local snmptrapd_servers=()
-    local snmpd_debug=""
-    local snmptrapd_debug=""
+function set_servers()
+{
+    local lo_servers=()
+    local dev0_servers=()
+    local extra_servers=()
+    local trap_lo_servers=()
+    local trap_dev0_servers=()
+    local trap_extra_servers=()
+    SNMPD_SERVERS=()
+    SNMPTRAPD_SERVERS=()
+    REMOTETRAPSERVERS=()
 
-    if [ "$DEBUG" == yes ]; then
-	#snmptrapd_debug=-DALL
-	snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
-	#snmpd_debug=-Dtrap,trapsess,example_notification,dlmod,ericssonDiscoveryMIB,netsnmp_sockaddr_in6_2,netsnmp_udp6,netsnmp_ipv6,snmpTargetAddrEntry,tdomain
-	snmpd_debug=-Ddtlsudp,tsm,9:dtlsudp,9:dtlsudp:*
-	#snmpd_debug=-Dtrap,transport,usm,trapsess,netsnmp_udp6,netsnmp_sockaddr_in6,snmpd_ports,socket:option,udpbase:sendto,netsnmp_udp,netsnmp_udp6,netsnmp_ipv6
-	#snmpd_debug=-DALL
+    if [ "$IPv4" == "yes" ]; then
+	SNMPD_SERVERS+=("udp:$IPv4_HOST:$SNMPD_PORT")
+	SNMPTRAPD_SERVERS+=("udp:$SNMPTRAPD_PORT")
+	REMOTETRAPSERVERS+=$REMOTE_IPv4:$SNMPTRAPD_PORT
 
-	SHOWLOGS=yes
+	lo_servers+=("$IPv4_LO:$SNMPD_PORT")
+	trap_lo_servers+=("udp:$IPv4_LO:$SNMPTRAPD_PORT")
+	dev0_servers+=("$IPv4_DEV0:$SNMPD_PORT")
+	trap_dev0_servers+=("udp:$IPv4_DEV0:$SNMPTRAPD_PORT")
+	if [ "$EXTRA" == "yes" ]; then
+	    extra_servers+=("$IPv4_EXTRA:$SNMPD_PORT")
+	    trap_extra_servers+=("udp:$IPv4_EXTRA:$SNMPTRAPD_PORT")
+	fi
     fi
+
+    if [ "$IPv6" == "yes" ]; then
+	SNMPD_SERVERS+=("udp6:[$IPv6_HOST]:$SNMPD_PORT")
+	SNMPTRAPD_SERVERS+=("udp6:$SNMPTRAPD_PORT")
+	REMOTETRAPSERVERS+=("udp6:[$REMOTE_IPv6]:$SNMPTRAPD_PORT")
+
+	lo_servers+=("udp6:[$IPv6_LO]:$SNMPD_PORT")
+	trap_lo_servers+=("udp6:[$IPv6_LO]:$SNMPTRAPD_PORT")
+	dev0_servers+=("udp6:[$IPv6_DEV0]:$SNMPD_PORT")
+	trap_dev0_servers+=("udp6:[$IPv6_DEV0]:$SNMPTRAPD_PORT")
+	if [ "$EXTRA" == "yes" ]; then
+	    SNMPD_SERVERS+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
+	    extra_servers+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
+	    trap_extra_servers+=("udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT")
+	fi
+    fi
+
+    if [ "$DTLSUDP4" == "yes" ]; then
+	SNMPD_SERVERS+=("dtlsudp:$IPv4_HOST:$DTLSUDP_PORT")
+	SNMPTRAPD_SERVERS+=("dtlsudp:$IPv4_HOST:$SNMPTRAPD_DTLSUDP_PORT")
+	REMOTETRAPSERVERS+=("dtlsudp:$REMOTE_IPv4:$SNMPTRAPD_DTLSUDP_PORT")
+
+	lo_servers+=("dtlsudp:$IPv4_LO:$DTLSUDP_PORT")
+	trap_lo_servers+=("dtlsudp:$IPv4_LO:$SNMPTRAPD_DTLSUDP_PORT")
+	dev0_servers+=("dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT")
+	trap_dev0_servers+=("dtlsudp:$IPv4_DEV0:$SNMPTRAPD_DTLSUDP_PORT")
+	if [ "$EXTRA" == "yes" ]; then
+	    SNMPD_SERVERS+=("dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT")
+	    extra_servers+=("dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT")
+	    trap_extra_servers+=("dtlsudp:$IPv4_EXTRA:$SNMPTRAPD_DTLSUDP_PORT")
+	fi
+    fi
+
+    if [ "$DTLSUDP6" == "yes" ]; then
+	SNMPD_SERVERS+=("dtlsudp6:[$IPv6_HOST]:$DTLSUDP_PORT")
+	SNMPTRAPD_SERVERS+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
+	REMOTETRAPSERVERS+=("dtlsudp6:[$REMOTE_IPv6]:$SNMPTRAPD_DTLSUDP_PORT")
+
+	lo_servers+=("dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT")
+	trap_lo_servers+=("dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT")
+	dev0_servers+=("dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT")
+	trap_dev0_servers+=("dtlsudp6:[$IPv6_DEV0]:$SNMPTRAPD_DTLSUDP_PORT")
+	if [ "$EXTRA" == "yes" ]; then
+	    SNMPD_SERVERS+=("dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT")
+	    extra_servers+=("dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT")
+	    trap_extra_servers+=("dtlsudp6:[$IPv6_EXTRA]:$SNMPTRAPD_DTLSUDP_PORT")
+	fi
+    fi
+
+    GETSERVERS=("${lo_servers[@]}")
+    GETSERVERS+=("${dev0_servers[@]}")
+    GETSERVERS+=("${extra_servers[@]}")
+
+    REMOTEGETSERVERS=("${dev0_servers[@]}")
+    REMOTEGETSERVERS+=("${extra_servers[@]}")
+
+    TRAPSERVERS=("${trap_lo_servers[@]}")
+    TRAPSERVERS+=("${trap_dev0_servers[@]}")
+    TRAPSERVERS+=("${trap_extra_servers[@]}")
+}
+
+function snmp_start () {
     #local snmpd_debug="-Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,transport,netsnmp_udp -d"
     #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd -d"
     #local snmptrapd_debug="-DALL -d"
+    #local snmptrapd_debug="-d"
 
-    # Start snmp servers
-    if [ "$IPv4" == "yes" ]; then
-	snmpd_servers+=("udp:$IPv4_HOST:$SNMPD_PORT")
-	snmptrapd_servers+=("udp:$SNMPTRAPD_PORT")
-    fi
-    if [ "$IPv6" == "yes" ]; then
-	if [ "$EXTRA" == "yes" ]; then
-	    snmpd_servers+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
-	fi
-	snmpd_servers+=("udp6:[$IPv6_HOST]:$SNMPD_PORT")
-	snmptrapd_servers+=("udp6:$SNMPTRAPD_PORT")
-    fi
-    if [ "$DTLSUDP4" == "yes" ]; then
-	snmpd_servers+=("dtlsudp:$IPv4_HOST:$DTLSUDP_PORT")
-	if [ "$EXTRA" == "yes" ]; then
-	    snmpd_servers+=("dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT")
-	fi
-	snmptrapd_servers+=("dtlsudp:$IPv4_HOST:$SNMPTRAPD_DTLSUDP_PORT")
-    fi
-    if [ "$DTLSUDP6" == "yes" ]; then
-	snmpd_servers+=("dtlsudp6:[$IPv6_HOST]:$DTLSUDP_PORT")
-	if [ "$EXTRA" == "yes" ]; then
-	    snmpd_servers+=("dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT")
-	fi
-	snmptrapd_servers+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
-    fi
+    $NOTE $FUNCNAME
 
-    echo "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug  ${snmptrapd_servers[@]}"
-    snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${snmptrapd_servers[@]}
-    echo "snmpd -V -a -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${snmpd_servers[@]}"
-    snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${snmpd_servers[@]}
+    echo "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug  ${SNMPTRAPD_SERVERS[@]}"
+    snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}
+    echo "snmpd -V -a -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[@]}"
+    snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[@]}
 }
 
 TCPDUMP_CAP=$TESTDIR/tcpdump.pcap
@@ -444,43 +491,6 @@ function snmp_get () {
     get_status=$((get_status + $?))
 }
 
-function f_get()
-{
-    tcpdump_capture any 4
-    if [ "$IPv4" == "yes" ]; then
-	snmp_get $IPv4_LO:$SNMPD_PORT
-	snmp_get $IPv4_DEV0:$SNMPD_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_get $IPv4_EXTRA:$SNMPD_PORT
-	fi
-    fi
-
-    if [ "$IPv6" == "yes" ]; then
-	snmp_get udp6:[$IPv6_LO]:$SNMPD_PORT
-	snmp_get udp6:[$IPv6_DEV0]:$SNMPD_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_get udp6:[$IPv6_EXTRA]:$SNMPD_PORT
-	fi
-    fi
-
-    if [ "$DTLSUDP4" == "yes" ]; then
-	snmp_get dtlsudp:$IPv4_LO:$DTLSUDP_PORT
-	snmp_get dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_get dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
-	fi
-    fi
-
-    if [ "$DTLSUDP6" == "yes" ]; then
-	snmp_get dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT
-	snmp_get dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_get dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
-	fi
-    fi
-    tcpdump_read 4
-}
-
 TCPDUMP_REMOTE_CAP=/tmp/tcpdump_remote.cap
 function remote_snmp_get () {
     local host=$1
@@ -509,34 +519,19 @@ function remote_snmp_get () {
     remote_get_status=$((remote_get_status + $l_status))
 }
 
-function f_remote_get()
+function f_get()
 {
+    tcpdump_capture any 4
+    for server in ${GETSERVERS[@]}; do
+	snmp_get $server
+    done
+    tcpdump_read 4
+
     if [ "$REMOTE" == "yes" ]; then
 	tcpdump_capture any 4
-	if [ "$IPv4" == "yes" ]; then
-	    remote_snmp_get $IPv4_DEV0:$SNMPD_PORT
-	    if [ "$EXTRA" == "yes" ]; then
-		remote_snmp_get $IPv4_EXTRA:$SNMPD_PORT
-	    fi
-	fi
-	if [ "$IPv6" == "yes" ]; then
-	    remote_snmp_get udp6:[$IPv6_DEV0]:$SNMPD_PORT
-	    if [ "$EXTRA" == "yes" ]; then
-		remote_snmp_get udp6:[$IPv6_EXTRA]:$SNMPD_PORT
-	    fi
-	fi
-	if [ "$DTLSUDP4" == "yes" ]; then
-	    remote_snmp_get dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT
-	    if [ "$EXTRA" == "yes" ]; then
-		remote_snmp_get dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
-	    fi
-	fi
-	if [ "$DTLSUDP6" == "yes" ]; then
-	    remote_snmp_get dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT
-	    if [ "$EXTRA" == "yes" ]; then
-		remote_snmp_get dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
-	    fi
-	fi
+	for server in ${REMOTEGETSERVERS[@]}; do
+	    remote_snmp_get $server
+	done
 	tcpdump_read 4
     fi
 }
@@ -564,38 +559,6 @@ function snmp_walk () {
     walk_status=$((walk_status + $l_status))
 }
 
-function f_walk()
-{
-    if [ "$IPv4" == "yes" ]; then
-	snmp_walk $IPv4_LO:$SNMPD_PORT
-	snmp_walk $IPv4_DEV0:$SNMPD_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_walk $IPv4_EXTRA:$SNMPD_PORT
-	fi
-    fi
-    if [ "$IPv6" == "yes" ]; then
-	snmp_walk udp6:[$IPv6_LO]:$SNMPD_PORT
-	snmp_walk udp6:[$IPv6_DEV0]:$SNMPD_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_walk udp6:[$IPv6_EXTRA]:$SNMPD_PORT
-	fi
-    fi
-    if [ "$DTLSUDP4" == "yes" ]; then
-	snmp_walk dtlsudp:$IPv4_LO:$DTLSUDP_PORT
-	snmp_walk dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_walk dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
-	fi
-    fi
-    if [ "$DTLSUDP6" == "yes" ]; then
-	snmp_walk dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT
-	snmp_walk dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_walk dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
-	fi
-    fi
-}
-
 function remote_snmp_walk () {
     local host=$1
     local l_status=0
@@ -620,33 +583,15 @@ function remote_snmp_walk () {
     remote_walk_status=$((remote_walk_status + $l_status))
 }
 
-function f_remote_walk()
+function f_walk()
 {
+    for server in ${GETSERVERS[@]}; do
+	snmp_walk $server
+    done
     if [ "$REMOTE" == "yes" ]; then
-	if [ "$IPv4" == "yes" ]; then
-	    remote_snmp_walk $IPv4_DEV0:$SNMPD_PORT
-	    if [ "$EXTRA" == "yes" ]; then
-		remote_snmp_walk $IPv4_EXTRA:$SNMPD_PORT
-	    fi
-	fi
-	if [ "$IPv6" == "yes" ]; then
-	    remote_snmp_walk udp6:[$IPv6_DEV0]:$SNMPD_PORT
-	    if [ "$EXTRA" == "yes" ]; then
-		remote_snmp_walk udp6:[$IPv6_EXTRA]:$SNMPD_PORT
-	    fi
-	fi
-	if [ "$DTLSUDP4" == "yes" ]; then
-	    remote_snmp_walk dtlsudp:$IPv4_DEV0:$DTLSUDP_PORT
-	    if [ "$EXTRA" == "yes" ]; then
-		remote_snmp_walk dtlsudp:$IPv4_EXTRA:$DTLSUDP_PORT
-	    fi
-	fi
-	if [ "$DTLSUDP6" == "yes" ]; then
-	    remote_snmp_walk dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT
-	    if [ "$EXTRA" == "yes" ]; then
-		remote_snmp_walk dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT
-	    fi
-	fi
+	for server in ${REMOTEGETSERVERS[@]}; do
+	    remote_snmp_walk $server
+	done
     fi
 }
 
@@ -656,7 +601,14 @@ function snmp_inform () {
 #    local inform_debug="-Lf $SNMPINFORM_LOG -DALL -d"
 
     $NOTE "INFORM $host v$SNMP_PROTOCOL"
-    $BASH "snmpinform $inform_debug -e $USM_EID -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER $host \"\" $TRAP_OID $OID i 444"
+    echo $host | grep dtlsudp >/dev/null
+    if [ "$?" -eq 0 ]; then
+	# TSM
+	$BASH "snmpinform $inform_debug -l authPriv -r 1 -v 3 $host \"\" $TRAP_OID $OID i 666"
+    else
+	# USM
+	$BASH "snmpinform $inform_debug -e $USM_EID -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER $host \"\" $TRAP_OID $OID i 444"
+    fi
 }
 
 function snmp_trap () {
@@ -678,9 +630,9 @@ function snmp_trap_check () {
     local l_status
 
     if [ ! -e $SNMPTRAPD_LOG.prev ]; then
-	grep $OID $SNMPTRAPD_LOG
+	grep -B 1 $OID $SNMPTRAPD_LOG
     else
-	diff --changed-group-format='%<%>' --unchanged-group-format='' $SNMPTRAPD_LOG $SNMPTRAPD_LOG.prev | grep $OID
+	diff --changed-group-format='%<%>' --unchanged-group-format='' $SNMPTRAPD_LOG $SNMPTRAPD_LOG.prev | grep -B 1 $OID
     fi
     trap_status=$((trap_status + $?))
     cp $SNMPTRAPD_LOG $SNMPTRAPD_LOG.prev
@@ -691,9 +643,9 @@ function snmp_trap_remote_check () {
 
     scp -q $REMOTE_IPv4:$SNMPTRAPD_LOG $SNMPTRAPD_LOG.remote
     if [ ! -e $SNMPTRAPD_LOG.remote.prev ]; then
-	grep $OID $SNMPTRAPD_LOG.remote
+	grep -B 1 $OID $SNMPTRAPD_LOG.remote
     else
-	diff --changed-group-format='%<%>' --unchanged-group-format='' $SNMPTRAPD_LOG.remote $SNMPTRAPD_LOG.remote.prev | grep $OID
+	diff --changed-group-format='%<%>' --unchanged-group-format='' $SNMPTRAPD_LOG.remote $SNMPTRAPD_LOG.remote.prev | grep -B 1 $OID
     fi
     remote_trap_status=$((remote_trap_status + $?))
     cp $SNMPTRAPD_LOG.remote $SNMPTRAPD_LOG.remote.prev
@@ -703,8 +655,14 @@ function snmp_trap_ip ()
 {
     local host=$1
 
-    snmp_trap $host
-    snmp_trap_check
+    echo $host | grep dtlsudp >/dev/null
+    if [ "$?" -eq 0 ]; then
+	# Don't send TRAP if DTLSUDP
+	return
+    else
+	snmp_trap $host
+	snmp_trap_check
+    fi
 }
 
 function snmp_inform_ip ()
@@ -717,70 +675,25 @@ function snmp_inform_ip ()
     fi
 }
 
-function snmp_inform_dtlsudp ()
-{
-    local host=$1
-#    local inform_debug="-Lf $SNMPINFORM_LOG -Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
-#    local inform_debug="-Lf $SNMPINFORM_LOG -DALL -d"
-
-    $NOTE "INFORM $host v3"
-    $BASH "snmpinform $inform_debug -l authPriv -r 1 -v 3 $host \"\" $TRAP_OID $OID i 666"
-    snmp_trap_check
-}
-
-function f_trap()
-{
-    if [ "$IPv4" == "yes" ]; then
-	snmp_trap_ip udp:$IPv4_LO:$SNMPTRAPD_PORT
-	snmp_trap_ip udp:$IPv4_DEV0:$SNMPTRAPD_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_trap_ip udp:$IPv4_EXTRA:$SNMPTRAPD_PORT
-	fi
-	snmp_inform_ip udp:$IPv4_LO:$SNMPTRAPD_PORT
-	snmp_inform_ip udp:$IPv4_DEV0:$SNMPTRAPD_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_inform_ip udp:$IPv4_EXTRA:$SNMPTRAPD_PORT
-	fi
-    fi
-    if [ "$IPv6" == "yes" ]; then
-	snmp_trap_ip udp6:[$IPv6_LO]:$SNMPTRAPD_PORT
-	snmp_trap_ip udp6:[$IPv6_DEV0]:$SNMPTRAPD_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_trap_ip udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT
-	fi
-	snmp_inform_ip udp6:[$IPv6_LO]:$SNMPTRAPD_PORT
-	snmp_inform_ip udp6:[$IPv6_DEV0]:$SNMPTRAPD_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_inform_ip udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT
-	fi
-    fi
-    if [ "$DTLSUDP4" == "yes" ]; then
-	snmp_inform_dtlsudp dtlsudp:$IPv4_LO:$SNMPTRAPD_DTLSUDP_PORT
-	snmp_inform_dtlsudp dtlsudp:$IPv4_DEV0:$SNMPTRAPD_DTLSUDP_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_inform_dtlsudp dtlsudp:$IPv4_EXTRA:$SNMPTRAPD_DTLSUDP_PORT
-	fi
-    fi
-    if [ "$DTLSUDP6" == "yes" ]; then
-	snmp_inform_dtlsudp dtlsudp6:[$IPv6_LO]:$SNMPTRAPD_DTLSUDP_PORT
-	snmp_inform_dtlsudp dtlsudp6:[$IPv6_DEV0]:$SNMPTRAPD_DTLSUDP_PORT
-	if [ "$EXTRA" == "yes" ]; then
-	    snmp_inform_dtlsudp dtlsudp6:[$IPv6_EXTRA]:$SNMPTRAPD_DTLSUDP_PORT
-	fi
-    fi
-}
-
-function snmp_trap_remote_ip ()
+function remote_snmp_trap_ip ()
 {
     local host=$1
 
-    snmp_trap $host
-    snmp_trap_remote_check
+    echo $host | grep dtlsudp >/dev/null
+    if [ "$?" -eq 0 ]; then
+	# Don't send TRAP if DTLSUDP
+	return
+    else
+	snmp_trap $host
+	snmp_trap_remote_check
+    fi
 }
 
-function snmp_inform_remote_ip ()
+function remote_snmp_inform_ip ()
 {
     local host=$1
+#    local inform_debug="-Lf $SNMPINFORM_LOG.remote -Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
+#    local inform_debug="-Lf $SNMPINFORM_LOG.remote -DALL -d"
 
     if [ $SNMP_PROTOCOL == "3" ]; then
 	snmp_inform $host
@@ -788,39 +701,21 @@ function snmp_inform_remote_ip ()
     fi
 }
 
-function snmp_inform_remote_dtlsudp ()
+function f_trap()
 {
-    local host=$1
-#    local inform_debug="-Lf $SNMPINFORM_LOG.remote -Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
-#    local inform_debug="-Lf $SNMPINFORM_LOG.remote -DALL -d"
-
-    $NOTE "REMOTE INFORM $host v3"
-    $BASH "snmpinform $inform_debug -l authPriv -r 1 -v 3 $host \"\" $TRAP_OID $OID i 666"
-    snmp_trap_remote_check
-}
-
-function f_remote_trap()
-{
+    for server in ${TRAPSERVERS[@]}; do
+	snmp_trap_ip $server
+	snmp_inform_ip $server
+    done
     if [ "$REMOTE" == "yes" ]; then
 	tcpdump_capture any 4
-	if [ "$IPv4" == "yes" ]; then
-	    snmp_trap_remote_ip $REMOTE_IPv4:$SNMPTRAPD_PORT
-	    snmp_inform_remote_ip $REMOTE_IPv4:$SNMPTRAPD_PORT
-	fi
-	if [ "$IPv6" == "yes" ]; then
-	    snmp_trap_remote_ip udp6:[$REMOTE_IPv6]:$SNMPTRAPD_PORT
-	    snmp_inform_remote_ip udp6:[$REMOTE_IPv6]:$SNMPTRAPD_PORT
-	fi
-	if [ "$DTLSUDP4" == "yes" ]; then
-	    snmp_inform_remote_dtlsudp dtlsudp:$REMOTE_IPv4:$SNMPTRAPD_DTLSUDP_PORT
-	fi
-	if [ "$DTLSUDP6" == "yes" ]; then
-	    snmp_inform_remote_dtlsudp dtlsudp6:[$REMOTE_IPv6]:$SNMPTRAPD_DTLSUDP_PORT
-	fi
+	for server in ${REMOTETRAPSERVERS[@]}; do
+	    remote_snmp_trap_ip $server
+	    remote_snmp_inform_ip $server
+	done
 	tcpdump_read 4
     fi
 }
-
 
 function usage()
 {
@@ -882,21 +777,20 @@ $NOTE $(date)
 
 snmp_kill
 prepare
+
+set_servers
 snmp_start
 
 if [ "$GET" == "yes" ]; then
     f_get
-    f_remote_get
 fi
 
 if [ "$WALK" == "yes" ]; then
     f_walk
-    f_remote_walk
 fi
 
 if [ "$TRAP" == "yes" ]; then
     f_trap
-    f_remote_trap
 fi
 
 snmp_check_servers
