@@ -9,6 +9,7 @@ SNMP_GITROOT		= $(shell git rev-parse --show-toplevel)
 snmp.build: # Build snmp image
 	$(TRACE)
 	$(CP) $(HOME)/.gitconfig snmp/
+	$(CP) $(HOME)/.tmux.conf snmp/
 	$(DOCKER) build --pull -f snmp/Dockerfile -t "snmp" .
 	$(MKSTAMP)
 
@@ -32,6 +33,7 @@ snmp.create.%:
 		--dns=8.8.8.8 \
 		-v $(SNMP_GITROOT):/root/snmp-test \
 		-i \
+		--privileged=true \
 		$(SNMP_IMAGE)
 	$(MAKE) snmp.prepare
 	$(MKSTAMP)

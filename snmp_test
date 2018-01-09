@@ -451,7 +451,6 @@ function tcpdump_capture ()
     local interface=$1
     local rotate_seconds=$2
     local filecount=1
-
     if [ "$TCPDUMP" == "yes" ]; then
 	tcpdump -G $rotate_seconds -W $filecount -w $TCPDUMP_CAP -i $interface &
 	sleep 1
@@ -629,6 +628,7 @@ function snmp_trap () {
 function snmp_trap_check () {
     local l_status
 
+    sleep 0.1
     if [ ! -e $SNMPTRAPD_LOG.prev ]; then
 	grep -B 1 $OID $SNMPTRAPD_LOG
     else
@@ -641,6 +641,7 @@ function snmp_trap_check () {
 function snmp_trap_remote_check () {
     local l_status
 
+    sleep 0.1
     scp -q $REMOTE_IPv4:$SNMPTRAPD_LOG $SNMPTRAPD_LOG.remote
     if [ ! -e $SNMPTRAPD_LOG.remote.prev ]; then
 	grep -B 1 $OID $SNMPTRAPD_LOG.remote
@@ -703,10 +704,12 @@ function remote_snmp_inform_ip ()
 
 function f_trap()
 {
+    tcpdump_capture any 4
     for server in ${TRAPSERVERS[@]}; do
 	snmp_trap_ip $server
 	snmp_inform_ip $server
     done
+    tcpdump_read 4
     if [ "$REMOTE" == "yes" ]; then
 	tcpdump_capture any 4
 	for server in ${REMOTETRAPSERVERS[@]}; do
