@@ -1,0 +1,19 @@
+export GET=yes
+export WALK=no
+export TRAP=yes
+
+export IPv4=yes
+export IPv6=yes
+export DTLSUDP4=yes
+export DTLSUDP6=yes
+export TCPDUMP=no
+export REMOTE=yes
+export REMOTE_TCPDUMP=no
+export SETX="-x"
+export EXTRA="no"
+
+export REMOTE_IPv4=172.19.0.3
+export REMOTE_IPv6=2001:db8:2::3
+
+export LOCAL_HOSTNAME=snmp1.prime.com
+export REMOTE_HOSTNAME=snmp2.prime.com
