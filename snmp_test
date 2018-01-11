@@ -133,6 +133,7 @@ function prepare_remote () {
 	    $SSH_REMOTE "mkdir -p $TESTDIR $CERTDIR $SNMP_PERSISTENT_DIR"
 	    rsync -az $TESTDIR/ $REMOTE_IPv4:$TESTDIR
 	    rsync -az $CERTDIR/ $REMOTE_IPv4:$CERTDIR
+	    $SSH_REMOTE "sed -i 's/^clientaddr/#clientaddr/' $SNMP_CONF"
 	    touch $PREPARE_REMOTE
 	fi
 	local snmptrapd_servers=()
@@ -155,7 +156,7 @@ function prepare_ip () {
     IPv6_DEV0=$(ip -o -6 addr list $IPDEV0 | grep global | head -1 | awk '{print $4}' | cut -d/ -f1)
     if [ -z $IPv6_DEV0 ]; then
 	# set global IPv6
-	IPv6_DEV0=2001:1b70:82a8:90:1284:31:0:181
+	IPv6_DEV0=2001:1b70:82a8:90:1284:31:0:182
 	ifconfig $IPDEV0 inet6 add $IPv6_DEV0/80
     fi
 
@@ -301,6 +302,7 @@ function create_snmp_conf ()
     $NOTE $FUNCNAME
 
     cp $conf_in $conf
+##    echo "clientaddr $IPv4_DEV0" >> $conf
     echo "defCommunity $SNMP_COMMUNITY" >> $conf
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "localCert $appCert" >> $conf
@@ -366,6 +368,7 @@ function set_servers()
 	dev0_servers+=("$IPv4_DEV0:$SNMPD_PORT")
 	trap_dev0_servers+=("udp:$IPv4_DEV0:$SNMPTRAPD_PORT")
 	if [ "$EXTRA" == "yes" ]; then
+#	    SNMPD_SERVERS+=("udp:$IPv4_EXTRA:$SNMPD_PORT")
 	    extra_servers+=("$IPv4_EXTRA:$SNMPD_PORT")
 	    trap_extra_servers+=("udp:$IPv4_EXTRA:$SNMPTRAPD_PORT")
 	fi
@@ -381,7 +384,7 @@ function set_servers()
 	dev0_servers+=("udp6:[$IPv6_DEV0]:$SNMPD_PORT")
 	trap_dev0_servers+=("udp6:[$IPv6_DEV0]:$SNMPTRAPD_PORT")
 	if [ "$EXTRA" == "yes" ]; then
-	    SNMPD_SERVERS+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
+#	    SNMPD_SERVERS+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
 	    extra_servers+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
 	    trap_extra_servers+=("udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT")
 	fi
@@ -413,7 +416,7 @@ function set_servers()
 	dev0_servers+=("dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT")
 	trap_dev0_servers+=("dtlsudp6:[$IPv6_DEV0]:$SNMPTRAPD_DTLSUDP_PORT")
 	if [ "$EXTRA" == "yes" ]; then
-	    SNMPD_SERVERS+=("dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT")
+#	    SNMPD_SERVERS+=("dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT")
 	    extra_servers+=("dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT")
 	    trap_extra_servers+=("dtlsudp6:[$IPv6_EXTRA]:$SNMPTRAPD_DTLSUDP_PORT")
 	fi
@@ -439,7 +442,7 @@ function snmp_start () {
 
     $NOTE $FUNCNAME
 
-    echo "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug  ${SNMPTRAPD_SERVERS[@]}"
+    echo "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}"
     snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}
     echo "snmpd -V -a -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[@]}"
     snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[@]}
