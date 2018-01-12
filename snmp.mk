@@ -57,7 +57,7 @@ snmp.stop: # Stop snmp containers
 	$(TRACE)
 	$(Q)$(foreach container, $(SNMP_CONTAINERS), make -s snmp.stop.$(container); )
 
-snmp.stop.%: # Stop snmp container
+snmp.stop.%:
 	$(TRACE)
 	$(DOCKER) stop $*
 	$(call rmstamp,snmp.start.$*)
@@ -92,11 +92,11 @@ snmp.terminal.%:
 	$(TRACE)
 	$(Q)gnome-terminal --command "docker exec -it $* sh -c \"/bin/bash\"" &
 
-snmp.build_net_snmp: # Build and install net-snmp in the snmp container
+snmp.build_net_snmp: snmp.start # Build and install net-snmp in the snmp container
 	$(MAKE) snmp.build_net_snmp.AW_latest SNMP_CONTAINER=$(SNMP_CONTAINER_0)
 	$(MAKE) snmp.build_net_snmp.AW_v5.7.3 SNMP_CONTAINER=$(SNMP_CONTAINER_1)
 
-snmp.build_net_snmp.%: # Build and install net-snmp in the snmp container
+snmp.build_net_snmp.%:
 	$(TRACE)
 	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "cd net-snmp; git co -b $* wayline/$*" || true
 	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "./build"
@@ -124,3 +124,6 @@ snmp.help:
 	$(call run-help, snmp.mk)
 
 help:: snmp.help
+	$(GREEN)
+	$(ECHO) -e "\nSet SNMP_TAG(default = $(SNMP_TAG)) to run container, available SNMP_TAGS are <latest:AW_latest:AW_v5.7.3>"
+	$(NORMAL)
