@@ -227,7 +227,7 @@ function create_snmpd_conf ()
     cp $conf_in $conf
 
 ##    echo "[snmp] clientaddr [$IPv6_DEV0]" >> $conf
-##    echo "[snmp] clientaddr [$IPv6_EXTRA]" >> $conf
+    echo "[snmp] clientaddr [$IPv6_EXTRA]" >> $conf
 ##    echo "[snmp] clientaddr $IPv4_DEV0" >> $conf
 ##    echo "[snmp] clientaddr $IPv4_EXTRA" >> $conf
 
@@ -439,6 +439,7 @@ function snmp_start () {
     #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd -d"
     #local snmptrapd_debug="-DALL -d"
     #local snmptrapd_debug="-d"
+    local snmpd_debug="-d"
 
     $NOTE $FUNCNAME
 
@@ -466,7 +467,11 @@ function tcpdump_read ()
 	sleep $1
 	# workaround: need a last package to close the tcpdump capture
 	ping6 -c 1 ::1 >/dev/null
-	tcpdump -T snmp -r $TCPDUMP_CAP port $SNMPD_PORT or port $DTLSUDP_PORT
+	tcpdump -T snmp -r $TCPDUMP_CAP \
+		port $SNMPD_PORT or \
+		port $DTLSUDP_PORT or \
+		port $SNMPTRAPD_PORT or \
+		port $SNMPTRAPD_DTLSUDP_PORT
     fi
 }
 
@@ -516,7 +521,11 @@ function remote_snmp_get () {
     l_status=$?
     if [ "$REMOTE_TCPDUMP" == "yes" ]; then
 	sleep 4
-	$SSH_REMOTE "tcpdump -T snmp -r $TCPDUMP_REMOTE_CAP port $SNMPD_PORT or port $DTLSUDP_PORT"
+	$SSH_REMOTE "tcpdump -T snmp -r $TCPDUMP_CAP \
+		port $SNMPD_PORT or \
+		port $DTLSUDP_PORT or \
+		port $SNMPTRAPD_PORT or \
+		port $SNMPTRAPD_DTLSUDP_PORT"
     fi
     remote_get_status=$((remote_get_status + $l_status))
 }
