@@ -496,6 +496,8 @@ function configure_mib()
 	$BASH "snmpset -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host SNMP-TARGET-MIB::snmpTargetAddrParams.$obj = mytrap"
 	$BASH "snmpset -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host SNMP-TARGET-MIB::snmpTargetAddrStorageType.$obj = 3"
 	$BASH "snmpset -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host SNMP-TARGET-MIB::snmpTargetAddrTDomain.$obj = SNMP-TLS-TM-MIB::snmpDTLSUDPDomain"
+	#local eth0 = "20 01 0D B8 00 02 00 00 00 00 00 00 00 00 00 03 27 B2"
+	#local eth1 = "20 01 0D B8 00 03 00 00 00 00 00 00 00 00 00 03 27 B2"
 	$BASH "snmpset -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host SNMP-TARGET-MIB::snmpTargetAddrTAddress.$obj = \"20 01 0D B8 00 03 00 00 00 00 00 00 00 00 00 03 27 B2\""
 
 	$BASH "snmpset -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host SNMP-TARGET-MIB::snmpTargetParamsRowStatus.$obj = 5"
