@@ -70,6 +70,7 @@ IPv4_HOST=0.0.0.0
 IPv4_LO=127.0.0.1
 IPv4_EXTRA=172.16.1.100
 IPv4_DEV0=$(ip -o -4 addr list $IPDEV0 | head -1 | awk '{print $4}' | cut -d/ -f1)
+IPv4_DEV0_LAST=$(echo $IPv4_DEV0 | cut -d'.' -f4)
 
 IPv6_HOST=::
 IPv6_LO=::1
@@ -156,7 +157,7 @@ function prepare_ip () {
     IPv6_DEV0=$(ip -o -6 addr list $IPDEV0 | grep global | head -1 | awk '{print $4}' | cut -d/ -f1)
     if [ -z $IPv6_DEV0 ]; then
 	# set global IPv6
-	IPv6_DEV0=2001:1b70:82a8:90:1284:31:0:182
+	IPv6_DEV0=2001:1b70:82a8:90:1284:31:0:${IPv4_DEV0_LAST}
 	ifconfig $IPDEV0 inet6 add $IPv6_DEV0/80
     fi
 
