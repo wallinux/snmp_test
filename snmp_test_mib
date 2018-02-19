@@ -1,12 +1,11 @@
 #!/bin/bash
 
-[ -z "$IPv4" ] && IPv4=yes
+[ -z "$IPv4" ] && IPv4=no
 [ -z "$IPv6" ] && IPv6=no
 [ -z "$DTLSUDP4" ] && DTLSUDP4=no
-[ -z "$DTLSUDP6" ] && DTLSUDP6=no
-[ -z "$TCPDUMP" ] && TCPDUMP=no
+[ -z "$DTLSUDP6" ] && DTLSUDP6=yes
+[ -z "$TCPDUMP" ] && TCPDUMP=yes
 [ -z "$REMOTE" ] && REMOTE=no
-[ -z "$REMOTE_TCPDUMP" ] && REMOTE_TCPDUMP=no
 SNMP_PROTOCOL="3"
 [ -z "$SETX" ] && SETX=""
 
@@ -329,7 +328,7 @@ function snmp_start () {
     #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd -d"
     #local snmptrapd_debug="-DALL -d"
     #local snmpd_debug="-d -DALL"
-    local snmpd_debug="-d -Dtrap,trap:*,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,netsnmp_udp6"
+    local snmpd_debug="-d -Dtrap,trap:*,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,netsnmp_udp6,AW"
 
     $NOTE $FUNCNAME
 
@@ -481,7 +480,7 @@ function configure_mib_dtlsudp()
     if [ $proto = udp6 ]; then
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTDomain.$obj = SNMPv2-SMI::mib-2.100.1.2
     fi
-    if [ $proto = udp ]; then
+    if [ $proto = udp4 ]; then
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTDomain.$obj = SNMPv2-TM::snmpUDPDomain
     fi
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTAddress.$obj x $targetaddr
@@ -526,10 +525,8 @@ function usage()
     echo -e "   DTLSUDP6=$DTLSUDP6"
     echo -e "   TCPDUMP=$TCPDUMP"
     echo -e "   REMOTE=$REMOTE"
-    echo -e "   REMOTE_TCPDUMP=$REMOTE_TCPDUMP"
     echo -e "   TRACE=$TRACE"
     echo -e "   SHOWLOGS=$SHOWLOGS"
-    echo -e "   DEBUG=$DEBUG"
     echo -e "   SNMP_PROTOCOL=$SNMP_PROTOCOL"
 }
 
