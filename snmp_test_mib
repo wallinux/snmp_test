@@ -50,9 +50,13 @@ NET_SNMP_CERT=net-snmp-cert
 TSM_USER=tsmuser
 PRIME_CA=ca.prime.com
 
+TRAP_USER=trapuser
+TRAP_PW=trap1234
+TRAP_EID=0x80001f8880523983647b8b0356
+
 USM_USER=usmuser
 USM_PW=kalle123
-USM_EID=80001f8880523983647b8b0357
+USM_EID=0x80001f8880523983647b8b0357
 
 IPv4_HOST=0.0.0.0
 IPv4_LO=127.0.0.1
@@ -94,7 +98,7 @@ function prepare () {
 
 PREPARE_REMOTE=$TESTDIR/prepare_remote
 function prepare_remote () {
-    local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
+    #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
 
     if [ "$REMOTE" == "yes" ]; then
 	if [ ! -e $PREPARE_REMOTE ]; then
@@ -192,17 +196,20 @@ function create_snmpd_conf ()
 ##    echo "[snmp] clientaddr [$IPv6_DEV0]" >> $conf
 ##    echo "[snmp] clientaddr $IPv4_DEV0" >> $conf
 
-    echo "engineID $USM_EID" >> $conf
+#    echo "engineID $USM_EID" >> $conf
     echo "oldEngineID $USM_EID" >> $conf
-    echo "exactEngineID $USM_EID" >> $conf
-    echo "createUser $USM_USER MD5 \"$USM_PW\" DES \"$USM_PW\"" >> $conf
+#    echo "exactEngineID $USM_EID" >> $conf
+
+    echo "createUser -e $TRAP_EID $TRAP_USER MD5 \"$TRAP_PW\" DES \"$TRAP_PW\"" >> $conf
+    echo "createUser -e $USM_EID $USM_USER MD5 \"$USM_PW\" DES \"$USM_PW\"" >> $conf
     echo "rwuser $USM_USER" >> $conf
+    echo "rwuser $TRAP_USER" >> $conf
     echo "trapcommunity public" >> $conf
     echo "[snmp] $LOGTIMESTAMP" >> $conf
 
     if [ "$IPv4" == "yes" ]; then
 	if [ $SNMP_PROTOCOL == "3" ]; then
-	    echo "trapsess $INFORM -v 3 -r 1 -t 300 -e $USM_EID -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER udp:$IPv4_DEV0:$SNMPTRAPD_PORT" >> $conf
+	    echo "trapsess $INFORM -v 3 -r 1 -t 300 -e $USM_EID -a MD5 -A $USM_PW -x DES -X $USM_PW -l authPriv -u $USM_USER udp:$IPv4_DEV0:$SNMPTRAPD_PORT" >> $conf
 	elif [ $SNMP_PROTOCOL == "2c" ]; then
 	    echo "trap2sink udp:$IPv4_DEV0:$SNMPTRAPD_PORT" >> $conf
 	fi
@@ -210,7 +217,7 @@ function create_snmpd_conf ()
 
     if [ "$IPv6" == "yes" ]; then
 	if [ $SNMP_PROTOCOL == "3" ]; then
-	    echo "trapsess $INFORM -v 3 -r 1 -t 300 -e $USM_EID -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER udp6:$IPv6_DEV0:$SNMPTRAPD_PORT" >> $conf
+	    echo "trapsess $INFORM -v 3 -r 1 -t 300 -e $USM_EID -a MD5 -A $USM_PW -x DES -X $USM_PW -l authPriv -u $USM_USER udp6:$IPv6_DEV0:$SNMPTRAPD_PORT" >> $conf
 	elif [ $SNMP_PROTOCOL == "2c" ]; then
 	    echo "trap2sink udp6:[$IPv6_DEV0]:$SNMPTRAPD_PORT" >> $conf
 	fi
@@ -239,9 +246,10 @@ function create_snmptrapd_conf ()
     $NOTE $FUNCNAME
 
     cp $conf_in $conf
-    echo createUser -e $USM_EID $USM_USER MD5 \"$USM_PW\" AES \"$USM_PW\" >> $conf
+    echo createUser -e $USM_EID $USM_USER MD5 \"$USM_PW\" DES \"$USM_PW\" >> $conf
+    echo createUser -e $TRAP_EID $TRAP_USER MD5 \"$TRAP_PW\" DES \"$TRAP_PW\" >> $conf
     echo "authUser log $USM_USER" >> $conf
-    echo "engineID $USM_EID" >> $conf
+    echo "authUser log $TRAP_USER" >> $conf
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "[snmp] trustCert $caCert" >> $conf
@@ -408,14 +416,17 @@ function configure_mib_dtlsudp()
 
     echo -e "\n--- HOST: $host TRAPADDR: $2:$3 ($targetaddr) OBJ=$obj"
 
+    #snmpusm -v 3 -u $USM_USER  -n "" -l authNoPriv -a MD5 -A $USM_PW $host create $TRAP_USER $USM_USER
+    #snmpusm -v 3 -x DES -u $TRAP_USER -n "" -l authNoPriv -a MD5 -A $USM_PW $host passwd $USM_PW $TRAP_PW
+    #snmpget -v 3 -u $TRAP_USER -n "" -l authNoPriv -a MD5 -A $TRAP_PW $host sysUpTime.0
+
     echo $host | grep dtlsudp >/dev/null
     if [ "$?" -eq 0 ]; then
 	# TSM
 	local SNMPSET="snmpset -v 3 --defSecurityModel=tsm $host"
     else
 	# USM
-	#local SNMPSET="snmpset $snmpset_debug -v 3 -e $USM_EID -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host"
-	local SNMPSET="snmpset $snmpset_debug -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host"
+	local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host"
     fi
 
     # snmpTargetParams
@@ -426,13 +437,13 @@ function configure_mib_dtlsudp()
     if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 3
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.$obj = 4
-	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = should_be_set_to_something
+	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = __BOGUS__
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 3
     else
 	if [ $SNMP_PROTOCOL == "3" ]; then
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 3
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.$obj = 3
-	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = usmuser
+	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $USM_USER
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 3
 	else
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 1
@@ -451,7 +462,7 @@ function configure_mib_dtlsudp()
 	$SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyType.$obj = 1
     fi
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.$obj = 3
-    
+
     # snmpTargetAddr
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrRowStatus.$obj = 5
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTimeout.$obj = 300
@@ -479,7 +490,7 @@ function configure_mib_dtlsudp()
 function get_mib()
 {
     local host=$1
-    local oids="SNMP-TARGET-MIB::snmpTargetAddrTable SNMP-TARGET-MIB::snmpTargetParamsTable SNMP-NOTIFICATION-MIB::snmpNotifyTable"
+    local oids="SNMP-TARGET-MIB::snmpTargetAddrTable SNMP-TARGET-MIB::snmpTargetParamsTable SNMP-NOTIFICATION-MIB::snmpNotifyTable SNMP-USER-BASED-SM-MIB::usmUserTable"
 
     $NOTE $FUNCNAME $host
 
@@ -491,9 +502,7 @@ function get_mib()
 	    $BASH "snmpbulkwalk -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host $oid"
 	fi
     done
-    #$BASH "snmpbulkwalk -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host . > $SNMPWALK_OUT"
-    #sleep 2
-    #grep 'SNMP-TARGET-MIB\|SNMP-NOTIFICATION-MIB' $SNMPWALK_OUT
+    $BASH "snmpbulkwalk -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host . > $SNMPWALK_OUT"
 }
 
 function usage()
@@ -590,7 +599,13 @@ if [ "$TCPDUMP" == "yes" ]; then
 
     tcpdump_read 5
     cp $TCPDUMP_CAP .
-    cat $SNMPTRAPD_LOG
+fi
+
+echo -e "\n---- LOCAL snmptrapd.log"
+cat $SNMPTRAPD_LOG
+if [ $trap_target = remote ]; then
+    echo -e "\n---- REMOTE snmptrapd.log"
+    scp $REMOTE_IPv4:$SNMPTRAPD_LOG /dev/stdout
 fi
 
 exit $status
