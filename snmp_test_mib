@@ -10,12 +10,12 @@
 [ -z "$SETX" ] && SETX=""
 
 [ -z "$IPDEV0" ] && IPDEV0=eth0
-[ -z "$LOCAL_HOSTNAME" ] && LOCAL_HOSTNAME=amarillo2.prime.com
+[ -z "$LOCAL_HOSTNAME" ] && LOCAL_HOSTNAME=local.prime.com
 
 [ -z "$REMOTE_IPDEV0" ] && REMOTE_IPDEV0=eth0
 [ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.149
 [ -z "$REMOTE_IPv6" ] && REMOTE_IPv6=2001:1b70:82a8:90:1284:31:0:149
-[ -z "$REMOTE_HOSTNAME" ] && REMOTE_HOSTNAME=victoria2.prime.com
+[ -z "$REMOTE_HOSTNAME" ] && REMOTE_HOSTNAME=remote.prime.com
 
 #####################################################################
 TESTDIR=/tmp/snmp/test
@@ -58,6 +58,9 @@ USM_USER=usmuser
 USM_PW=kalle123
 USM_EID=0x80001f8880523983647b8b0357
 
+RETRYCOUNT=0
+TIMEOUT=3
+
 IPv4_HOST=0.0.0.0
 IPv4_LO=127.0.0.1
 IPv4_DEV0=$(ip -o -4 addr list $IPDEV0 | head -1 | awk '{print $4}' | cut -d/ -f1)
@@ -70,8 +73,6 @@ NOTE='echo -e \n--- '
 HEAD="head -3"
 BASH="bash $SETX -c"
 SSH_REMOTE="ssh $REMOTE_IPv4"
-
-#INFORM=-Ci
 
 #####################################################################
 function snmp_kill () {
@@ -98,7 +99,7 @@ function prepare () {
 
 PREPARE_REMOTE=$TESTDIR/prepare_remote
 function prepare_remote () {
-    #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
+    local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
 
     if [ "$REMOTE" == "yes" ]; then
 	if [ ! -e $PREPARE_REMOTE ]; then
@@ -172,44 +173,36 @@ function get_cert ()
     appCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpapp -C $CERTDIR)
     trapdCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmptrapd -C $CERTDIR)
     caCert=$($NET_SNMP_CERT showca --fingerprint --brief $PRIME_CA -C $CERTDIR)
-
-    if [ "$TRACE" == "yes" ]; then
-	echo USM_USER:   $USM_USER
-	echo TSM_USER:   $TSM_USER
-	echo serverCert: $serverCert
-	echo appCert:    $appCert
-	echo trapdCert:  $trapdCert
-	echo caCert:     $caCert
-    fi
 }
-
 
 function create_snmpd_conf ()
 {
     local conf_in=$1
     local conf=$2
+    local TRAPSESS_USM="trapsess -v 3 -r $RETRYCOUNT -t $TIMEOUT -e $TRAP_EID -a MD5 -A $TRAP_PW -x DES -X $TRAP_PW -l authPriv -u $TRAP_USER"
+    local TRAPSESS_TSM="trapsess -v 3 -Ci -r $RETRYCOUNT -t $TIMEOUT"
 
     $NOTE $FUNCNAME
 
     cp $conf_in $conf
 
-##    echo "[snmp] clientaddr [$IPv6_DEV0]" >> $conf
-##    echo "[snmp] clientaddr $IPv4_DEV0" >> $conf
+#    echo "[snmp] clientaddr [$IPv6_DEV0]" >> $conf
+#    echo "[snmp] clientaddr $IPv4_DEV0" >> $conf
 
-#    echo "engineID $USM_EID" >> $conf
-    echo "oldEngineID $USM_EID" >> $conf
-#    echo "exactEngineID $USM_EID" >> $conf
+#    echo "engineID $TRAP_EID" >> $conf
+#    echo "oldEngineID $TRAP_EID" >> $conf
+    echo "exactEngineID $TRAP_EID" >> $conf
 
     echo "createUser -e $TRAP_EID $TRAP_USER MD5 \"$TRAP_PW\" DES \"$TRAP_PW\"" >> $conf
-    echo "createUser -e $USM_EID $USM_USER MD5 \"$USM_PW\" DES \"$USM_PW\"" >> $conf
+    echo "createUser $USM_USER MD5 \"$USM_PW\" DES \"$USM_PW\"" >> $conf
     echo "rwuser $USM_USER" >> $conf
-    echo "rwuser $TRAP_USER" >> $conf
+    echo "rouser -s usm $TRAP_USER" >> $conf
     echo "trapcommunity public" >> $conf
     echo "[snmp] $LOGTIMESTAMP" >> $conf
 
     if [ "$IPv4" == "yes" ]; then
 	if [ $SNMP_PROTOCOL == "3" ]; then
-	    echo "trapsess $INFORM -v 3 -r 1 -t 300 -e $USM_EID -a MD5 -A $USM_PW -x DES -X $USM_PW -l authPriv -u $USM_USER udp:$IPv4_DEV0:$SNMPTRAPD_PORT" >> $conf
+	    echo "$TRAPSESS_USM udp:$IPv4_DEV0:$SNMPTRAPD_PORT" >> $conf
 	elif [ $SNMP_PROTOCOL == "2c" ]; then
 	    echo "trap2sink udp:$IPv4_DEV0:$SNMPTRAPD_PORT" >> $conf
 	fi
@@ -217,7 +210,7 @@ function create_snmpd_conf ()
 
     if [ "$IPv6" == "yes" ]; then
 	if [ $SNMP_PROTOCOL == "3" ]; then
-	    echo "trapsess $INFORM -v 3 -r 1 -t 300 -e $USM_EID -a MD5 -A $USM_PW -x DES -X $USM_PW -l authPriv -u $USM_USER udp6:$IPv6_DEV0:$SNMPTRAPD_PORT" >> $conf
+	    echo "$TRAPSESS_USM udp6:$IPv6_DEV0:$SNMPTRAPD_PORT" >> $conf
 	elif [ $SNMP_PROTOCOL == "2c" ]; then
 	    echo "trap2sink udp6:[$IPv6_DEV0]:$SNMPTRAPD_PORT" >> $conf
 	fi
@@ -225,15 +218,16 @@ function create_snmpd_conf ()
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "[snmp] trustCert $caCert" >> $conf
-	echo "[snmp] localCert $serverCert" >> $conf
+	echo "[snmp] localCert $appCert" >> $conf
+	echo "[snmp] peerCert $serverCert" >> $conf
 	echo "certSecName 10 $appCert --cn" >> $conf
 	echo "rwuser -s tsm $TSM_USER authpriv" >> $conf
 
 	if [ "$DTLSUDP4" == "yes" ]; then
-	    echo "trapsess $INFORM -v 3 -r 1 -t 300 -T localCert=$appCert -T peerCert=$serverCert dtlsudp:$IPv4_DEV0:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
+	    echo "$TRAPSESS_TSM dtlsudp:$IPv4_DEV0:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
 	fi
 	if [ "$DTLSUDP6" == "yes" ]; then
-	    echo "trapsess $INFORM -v 3 -r 1 -t 300 -T localCert=$appCert -T peerCert=$serverCert dtlsudp6:[$IPv6_DEV0]:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
+	    echo "$TRAPSESS_TSM dtlsudp6:[$IPv6_DEV0]:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
 	fi
     fi
 }
@@ -246,16 +240,14 @@ function create_snmptrapd_conf ()
     $NOTE $FUNCNAME
 
     cp $conf_in $conf
-    echo createUser -e $USM_EID $USM_USER MD5 \"$USM_PW\" DES \"$USM_PW\" >> $conf
     echo createUser -e $TRAP_EID $TRAP_USER MD5 \"$TRAP_PW\" DES \"$TRAP_PW\" >> $conf
-    echo "authUser log $USM_USER" >> $conf
     echo "authUser log $TRAP_USER" >> $conf
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "[snmp] trustCert $caCert" >> $conf
+	echo "[snmp] peerCert $appCert" >> $conf
 	echo "[snmp] localCert $serverCert" >> $conf
 	echo "certSecName 9 $appCert --cn" >> $conf
-#	echo "certSecName 100 $caCert  --rfc822" >> $conf
 	echo "authuser log -s tsm $TSM_USER authpriv" >> $conf
     fi
     echo [snmp] $LOGTIMESTAMP >> $conf
@@ -269,7 +261,6 @@ function create_snmp_conf ()
     $NOTE $FUNCNAME
 
     cp $conf_in $conf
-    ##    echo "clientaddr $IPv4_DEV0" >> $conf
     echo "defCommunity $SNMP_COMMUNITY" >> $conf
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "localCert $appCert" >> $conf
@@ -443,7 +434,7 @@ function configure_mib_dtlsudp()
 	if [ $SNMP_PROTOCOL == "3" ]; then
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 3
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.$obj = 3
-	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $USM_USER
+	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $TRAP_USER
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 3
 	else
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 1
@@ -456,17 +447,19 @@ function configure_mib_dtlsudp()
     # snmpNotify
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.$obj = 5
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyTag.$obj = $link
-    if [ "$INFORM" != "" ]; then
+    if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
+	# inform
 	$SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyType.$obj = 2
     else
+	# trap
 	$SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyType.$obj = 1
     fi
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.$obj = 3
 
     # snmpTargetAddr
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrRowStatus.$obj = 5
-    $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTimeout.$obj = 300
-    $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrRetryCount.$obj = 1
+    $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTimeout.$obj = ${TIMEOUT}00
+    $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrRetryCount.$obj = $RETRYCOUNT
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTagList.$obj = $link
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrParams.$obj = $link
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrStorageType.$obj = 3
@@ -490,7 +483,7 @@ function configure_mib_dtlsudp()
 function get_mib()
 {
     local host=$1
-    local oids="SNMP-TARGET-MIB::snmpTargetAddrTable SNMP-TARGET-MIB::snmpTargetParamsTable SNMP-NOTIFICATION-MIB::snmpNotifyTable SNMP-USER-BASED-SM-MIB::usmUserTable"
+    local oids="SNMP-TARGET-MIB::snmpTargetAddrTable SNMP-TARGET-MIB::snmpTargetParamsTable SNMP-NOTIFICATION-MIB::snmpNotifyTable"
 
     $NOTE $FUNCNAME $host
 
@@ -519,7 +512,6 @@ function usage()
     echo -e "   DTLSUDP6=$DTLSUDP6"
     echo -e "   TCPDUMP=$TCPDUMP"
     echo -e "   REMOTE=$REMOTE"
-    echo -e "   TRACE=$TRACE"
 }
 
 ###########################################
