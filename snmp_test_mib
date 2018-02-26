@@ -10,12 +10,11 @@
 [ -z "$SETX" ] && SETX=""
 
 [ -z "$IPDEV0" ] && IPDEV0=eth0
-[ -z "$LOCAL_HOSTNAME" ] && LOCAL_HOSTNAME=local.prime.com
+[ -z "$LOCAL_HOSTNAME" ] && LOCAL_HOSTNAME=$(hostname)
 
 [ -z "$REMOTE_IPDEV0" ] && REMOTE_IPDEV0=eth0
 [ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.149
 [ -z "$REMOTE_IPv6" ] && REMOTE_IPv6=2001:1b70:82a8:90:1284:31:0:149
-[ -z "$REMOTE_HOSTNAME" ] && REMOTE_HOSTNAME=remote.prime.com
 
 #####################################################################
 TESTDIR=/tmp/snmp/test
@@ -99,12 +98,11 @@ function prepare () {
 
 PREPARE_REMOTE=$TESTDIR/prepare_remote
 function prepare_remote () {
-    local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
+    #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
 
     if [ "$REMOTE" == "yes" ]; then
 	if [ ! -e $PREPARE_REMOTE ]; then
 	    $NOTE "preparing remote IP"
-	    $SSH_REMOTE "hostname $REMOTE_HOSTNAME"
 	    $SSH_REMOTE "killall snmptrapd"
 	    $SSH_REMOTE "ifconfig $REMOTE_IPDEV0 inet6 add $REMOTE_IPv6/64"
 	    $SSH_REMOTE "ip -6 route add default dev $REMOTE_IPDEV0"
@@ -157,7 +155,6 @@ function create_cert ()
     $NOTE $FUNCNAME
 
     if [ ! -d $CERTDIR ]; then
-	hostname $LOCAL_HOSTNAME
 	$NET_SNMP_CERT genca -I -n $PRIME_CA -e admin@prime.com -C $CERTDIR
 	$NET_SNMP_CERT gencert -I -t snmpd --with-ca $PRIME_CA --cn $LOCAL_HOSTNAME -C $CERTDIR
 	$NET_SNMP_CERT gencert -I -t snmpapp --cn $TSM_USER -C $CERTDIR
@@ -299,7 +296,7 @@ function snmp_start () {
     #local snmptrapd_debug="-DALL -d"
 
     #local snmpd_debug="-d -DALL"
-    local snmpd_debug="-d -Dtrap,trap:*,usm,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,netsnmp_udp6,AW,snmp_sess_add,target_sessions,netsnmp_udpbase,snmpv3"
+    local snmpd_debug="-d -Dtrap,trap:*,usm,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,snmpv3_build,netsnmp_udp6,AW,snmp_sess_add,target_sessions,netsnmp_udpbase,snmpv3,netsnmp_sockaddr_in,netsnmp_sockaddr_in6_2,snmp_api,cert,sslctx_client"
 
     $NOTE $FUNCNAME
 
