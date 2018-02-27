@@ -1,0 +1,41 @@
+#/bin/sh
+
+MIB=NET-SNMP-TUTORIAL-MIB::nstAgentSubagentObject.0
+PORT=161
+
+TESTDIR=/tmp/snmp/test
+SNMPD_LOG=$TESTDIR/snmpd.log
+SNMPD_AGENT_LOG=$TESTDIR/snmpd_agent.log
+
+function snmp_kill ()
+{
+    killall example-demon
+    killall snmpd
+}
+
+function prepare ()
+{
+    mkdir -p $HOME/.snmp/mibs
+    cp -f NET-SNMP-TUTORIAL-MIB.txt $HOME/.snmp/mibs
+    export MIBS=+NET-SNMP-TUTORIAL-MIB
+}
+
+function snmp_start ()
+{
+    local snmpd_dbg="-d"
+
+    snmpd $snmpd_dbg -Lf $SNMPD_LOG -C --rwcommunity=public --master=agentx  udp:$PORT
+    ./example-demon &
+    sleep 1
+}
+
+snmp_kill
+prepare
+snmp_start
+
+snmpget -v2c -c public localhost:$PORT $MIB
+snmpset -v2c -c public localhost:$PORT $MIB = 5
+snmpwalk -v2c -c public localhost:$PORT $MIB
+
+## vim: set sw=4 sts=4 et foldmethod=syntax : ##
+

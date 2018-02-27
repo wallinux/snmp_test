@@ -1,0 +1,91 @@
+#/bin/sh
+
+MIB=NET-SNMP-TUTORIAL-MIB::nstAgentSubagentObject.0
+PORT=1161
+
+TESTDIR=/tmp/snmp/test
+SNMPD_LOG=$TESTDIR/snmpd.log
+SNMPD_AGENT_LOG=$TESTDIR/snmpd_agent.log
+
+function snmp_kill ()
+{
+    killall mysubagent &>/dev/null
+    killall snmpd  &>/dev/null
+}
+
+function prepare ()
+{
+    mkdir -p $HOME/.snmp/mibs
+    cp -f NET-SNMP-TUTORIAL-MIB.txt $HOME/.snmp/mibs
+    export MIBS=+NET-SNMP-TUTORIAL-MIB
+}
+
+function snmp_start ()
+{
+    local snmpd_dbg="-d"
+    local agent_dbg="-d -D\
+agent_set,\
+agentx_build,\
+agentx_register_app_config_handler,\
+callback,\
+container,\
+container_registry,\
+daemonize,\
+data_list,\
+defaults,\
+dns,\
+dtlsudp,\
+dump_recv_callback_transport,\
+dump_send_callback_transport,\
+fixup_mib_directory,\
+get_mib_directory,\
+handler,\
+handler_registry,\
+helper,\
+init_mib,\
+init_usm,\
+lcd_set_enginetime,\
+mibindex,\
+netsnmp_ds_set_boolean,\
+netsnmp_ds_set_int,\
+netsnmp_ds_set_string,\
+netsnmp_sockaddr_in,\
+netsnmp_tcpbase,\
+nstAgentSubagentObject,\
+output,\
+register_mib,\
+results,\
+sess_process_packet,\
+sess_read,\
+sess_select,\
+snmp_agent,\
+snmp_alarm,\
+snmp_openssl,\
+snmp_sess,\
+snmp_sess_add,\
+snmpd_register_app_config_handler,\
+snmpv3,\
+socket,\
+sprint_by_type,\
+subtree,\
+tdomain,\
+tlstcp,\
+transport,\
+transport_callback,\
+trap,\
+tsm,\
+verbose,\
+wtest"
+
+    snmpd $snmpd_dbg -Lf $SNMPD_LOG -C --rwcommunity=public --master=agentx --agentXSocket=tcp:localhost:1705 udp:$PORT
+    ./mysubagent -Lf $SNMPD_AGENT_LOG $agent_dbg -x tcp:localhost:1705
+    sleep 1
+}
+
+snmp_kill
+prepare
+snmp_start
+
+snmpget -v2c -c public localhost:$PORT $MIB
+snmpset -v2c -c public localhost:$PORT $MIB = 5
+snmpwalk -v2c -c public localhost:$PORT $MIB
