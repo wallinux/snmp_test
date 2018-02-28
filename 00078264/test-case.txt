@@ -1,0 +1,32 @@
+
+Tested with net-snmp 5.7.2, RHEL 5.5, x86_64.
+
+#0)
+
+$ cat /tmp/snmp-test/config/snmpd.conf.NORETRY
+rocommunity public
+rwcommunity topsecret
+agentXRetries 0
+
+// disabled retries just for the sake of demonstration;
+// with retries on there are more crash scenarios
+
+$ snmpd -f -x /tmp/snmp-test/var/agentx/master 10.29.34.24:11167 -c /tmp/snmp-test/config/snmpd.conf.NORETRY
+$ valgrind --tool=memcheck --leak-check=full  --log-file=vg.log ./subwgt
+// subwgt will debug log into 'sd.log'
+
+#1) 
+
+kill -STOP <valgrinded-subwgt>
+
+#2) 
+
+$ snmpset -On -v2c -c topsecret 10.29.34.24:11167  NET-SNMP-MIB::netSnmp.2.2.1.1.2.3.98.111.98  s abc NET-SNMP-MIB::netSnmp.2.2.1.1.3.3.98.111.98 s xyz
+Error in packet.
+Reason: (genError) A general failure occured
+Failed object: .1.3.6.1.4.1.8072.2.2.1.1.2.3.98.111.98
+
+#3) 
+
+CONT subwgt
+

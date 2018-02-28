@@ -1,0 +1,35 @@
+#!/bin/sh
+set +x
+
+MIB=NET-SNMP-MIB::netSnmp.2.2.1.1.2.3.98.111.98
+HOST=localhost:11167
+local snmpd_dbg="-d"
+
+# valgrind exec name is memcheck-amd64-linux
+killall memcheck-amd64-linux
+killall snmpd
+
+ulimit -c unlimited
+
+snmpd $snmpd_dbg -Lf snmpd.log -x /tmp/snmp-test/var/agentx/master -c $PWD/snmpd.conf $HOST
+valgrind --tool=memcheck --leak-check=full --log-file=vg.log subwgt/subwgt &
+valgrind_pid=$!
+sleep 1
+snmpset -On -v2c -c topsecret $HOST $MIB s abc $MIB s xyz
+
+echo WG_PID: $valgrind_pid
+
+kill -STOP $valgrind_pid
+sleep 10
+snmpset -On -v2c -c topsecret $HOST $MIB s abc $MIB s xyz
+
+sleep 10
+kill -CONT $valgrind_pid
+sleep 10
+snmpset -On -v2c -c topsecret $HOST $MIB s abc $MIB s xyz
+sleep 10
+
+cat sd.log
+cat vg.log
+
+#NOTE Not possible to reproduce the issue with the script, but I can do it manually
