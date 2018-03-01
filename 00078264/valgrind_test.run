@@ -8,35 +8,34 @@ SNMPD_LOG=/tmp/snmpd.log
 #snmpd_dbg="-d"
 
 ulimit -c unlimited
-rm -f core
+
+# valgrind exec name is memcheck-amd64-linux
+killall memcheck-amd64-linux
 killall snmpd
-killall subwgt/subwgt
 sleep 2
 
 snmpd $snmpd_dbg -Lf $SNMPD_LOG -x /tmp/snmp-test/var/agentx/master -c $PWD/snmpd.conf $HOST
-subwgt/subwgt &
-subwgt_pid=$!
-echo SUBWGT_PID: $subwgt_pid
+valgrind --tool=memcheck --leak-check=full --log-file=$VALGRIND_LOG subwgt/subwgt &
+valgrind_pid=$!
+echo WG_PID: $valgrind_pid
 sleep 5
 
 # OK
 snmpset -On -v2c -c topsecret $HOST $MIB s abc $MIB s xyz
 
-# CRASH
-kill -STOP $subwgt_pid
+kill -STOP $valgrind_pid
 cp sd.log sd1.log
 sleep 3
 snmpset -On -v2c -c topsecret $HOST $MIB s abc $MIB s xyz
 sleep 3
-kill -CONT $subwgt_pid
+kill -CONT $valgrind_pid
 sleep 2
 
-snmpset -On -v2c -c topsecret $HOST $MIB s abc $MIB s xyz
 #cat sd.log
 #cat $SNMPD_LOG
-
-if [ -e core ]; then
-    echo "FAIL: TEST crashed, see core file"
+grep Invalid $VALGRIND_LOG >/dev/null
+if [ $? = 0 ]; then
+    echo "FAIL: TEST crashed, see $VALGRIND_LOG"
 else
     echo "PASS: TEST OK"
 fi
