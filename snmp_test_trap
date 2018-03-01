@@ -579,13 +579,13 @@ get_mib $CONFIG_HOST
 
 if [ "$TCPDUMP" == "yes" ]; then
     $NOTE capture tcpdump for traps
-    # tcpdump_capture any 34
-    # sleep 35
-    sleep 5
     tcpdump_capture any 5
-    killall snmpd
-    sleep 3
+fi
 
+killall snmpd
+sleep 3
+
+if [ "$TCPDUMP" == "yes" ]; then
     tcpdump_read 5
     cp $TCPDUMP_CAP .
 fi
