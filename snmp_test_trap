@@ -9,6 +9,9 @@
 [ -z "$SNMP_PROTOCOL" ] && SNMP_PROTOCOL=3
 [ -z "$SETX" ] && SETX=""
 [ -z "$INFORM" ] && INFORM=yes
+[ -z "$KILLSNMPD" ] && KILLSNMPD=yes
+[ -z "$SETUP_TRAPSESS" ] && SETUP_TRAPSESS=yes
+[ -z "$DEBUG" ] && DEBUG=no
 
 [ -z "$IPDEV0" ] && IPDEV0=eth0
 [ -z "$LOCAL_HOSTNAME" ] && LOCAL_HOSTNAME=$(hostname)
@@ -69,6 +72,11 @@ IPv4_DEV0_LAST=$(echo $IPv4_DEV0 | cut -d'.' -f4)
 
 IPv6_HOST=::
 IPv6_LO=::1
+
+TCPDUMP_TIMEOUT=35
+if [ "$KILLSNMPD" == "yes" ]; then
+    TCPDUMP_TIMEOUT=5
+fi
 
 NOTE='echo -e \n--- '
 HEAD="head -3"
@@ -181,7 +189,11 @@ function create_snmpd_conf ()
     if [ $INFORM == "yes" ]; then
 	inform="-Ci"
     fi
-    local TRAPSESS="trapsess $inform -v 3 -r $RETRYCOUNT -t $TIMEOUT"
+    if [ "$SETUP_TRAPSESS" == "yes" ]; then
+	local TRAPSESS="trapsess $inform -v 3 -r $RETRYCOUNT -t $TIMEOUT"
+    else
+	local TRAPSESS="## trapsess $inform -v 3 -r $RETRYCOUNT -t $TIMEOUT"
+    fi
     local TRAPSESS_USM="$TRAPSESS -e $TRAP_EID -a MD5 -A $TRAP_PW -x DES -X $TRAP_PW -l authPriv -u $TRAP_USER"
     local TRAPSESS_TSM=$TRAPSESS
 
@@ -291,12 +303,13 @@ function set_servers()
 }
 
 function snmp_start () {
-    #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd -d"
-    #local snmptrapd_debug="-DALL -d"
+    if [ "$DEBUG" == "yes" ]; then
+	local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd -d"
+	#local snmptrapd_debug="-DALL -d"
 
-    #local snmpd_debug="-d -DALL"
-    #local snmpd_debug="-d -Dtrap,trap:*,usm,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,snmpv3_build,netsnmp_udp6,AW,snmp_sess_add,target_sessions,netsnmp_udpbase,snmpv3,netsnmp_sockaddr_in,netsnmp_sockaddr_in6_2,snmp_api,cert,sslctx_client"
-
+	local snmpd_debug="-d -Dtrap,trap:*,usm,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,snmpv3_build,netsnmp_udp6,AW,snmp_sess_add,target_sessions,netsnmp_udpbase,snmpv3,netsnmp_sockaddr_in,netsnmp_sockaddr_in6_2,snmp_api,cert,sslctx_client"
+	#local snmpd_debug="-DALL -d"
+    fi
     $NOTE $FUNCNAME
 
     echo "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}"
@@ -553,14 +566,17 @@ prepare
 set_servers
 snmp_start
 
-#CONFIG_HOST=$IPv4_HOST:$SNMPD_PORT
+CONFIG_HOST=$IPv4_HOST:$SNMPD_PORT
 #CONFIG_HOST=udp6:[$IPv6_HOST]:$SNMPD_PORT
-CONFIG_HOST=dtlsudp:$IPv4_LO:$DTLSUDP_PORT
+#CONFIG_HOST=dtlsudp:$IPv4_LO:$DTLSUDP_PORT
 #CONFIG_HOST=dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT
 
 if [ $trap_target = local ]; then
     CONFIG_IPv4=$IPv4_DEV0
     CONFIG_IPv6=$IPv6_DEV0
+elif [ $trap_target = loopback ]; then
+    CONFIG_IPv4=$IPv4_LO
+    CONFIG_IPv6=$IPv6_LO
 else
     CONFIG_IPv4=$REMOTE_IPv4
     CONFIG_IPv6=$REMOTE_IPv6
@@ -582,14 +598,16 @@ get_mib $CONFIG_HOST
 
 if [ "$TCPDUMP" == "yes" ]; then
     $NOTE capture tcpdump for traps
-    tcpdump_capture any 5
+    tcpdump_capture any $TCPDUMP_TIMEOUT
 fi
 
-killall snmpd
-sleep 3
+if [ "$KILLSNMPD" == "yes" ]; then
+    killall snmpd
+    sleep 3
+fi
 
 if [ "$TCPDUMP" == "yes" ]; then
-    tcpdump_read 5
+    tcpdump_read $TCPDUMP_TIMEOUT
     cp $TCPDUMP_CAP .
 fi
 
