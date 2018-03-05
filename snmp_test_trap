@@ -48,6 +48,7 @@ NET_SNMP_CERT=net-snmp-cert
 
 TSM_USER=tsmuser
 PRIME_CA=ca.prime.com
+PRIME_EMAIL=admin@prime.com
 
 TRAP_USER=trapuser
 TRAP_PW=trap1234
@@ -155,10 +156,10 @@ function create_cert ()
     $NOTE $FUNCNAME
 
     if [ ! -d $CERTDIR ]; then
-	$NET_SNMP_CERT genca -I -n $PRIME_CA -e admin@prime.com -C $CERTDIR
-	$NET_SNMP_CERT gencert -I -t snmpd --with-ca $PRIME_CA --cn $LOCAL_HOSTNAME -C $CERTDIR
+	$NET_SNMP_CERT genca -I -n $PRIME_CA -e $PRIME_EMAIL -C $CERTDIR
+	$NET_SNMP_CERT gencert -I -t snmpd --cn $TSM_USER -C $CERTDIR
 	$NET_SNMP_CERT gencert -I -t snmpapp --cn $TSM_USER -C $CERTDIR
-	$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TSM_USER -C $CERTDIR
+	$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TRAP_USER -C $CERTDIR
     fi
 }
 
@@ -166,7 +167,7 @@ function get_cert ()
 {
     $NOTE $FUNCNAME
 
-    serverCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpd -C $CERTDIR)
+    snmpdCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpd -C $CERTDIR)
     appCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpapp -C $CERTDIR)
     trapdCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmptrapd -C $CERTDIR)
     caCert=$($NET_SNMP_CERT showca --fingerprint --brief $PRIME_CA -C $CERTDIR)
@@ -176,24 +177,20 @@ function create_snmpd_conf ()
 {
     local conf_in=$1
     local conf=$2
-    local TRAPSESS_USM="trapsess -v 3 -r $RETRYCOUNT -t $TIMEOUT -e $TRAP_EID -a MD5 -A $TRAP_PW -x DES -X $TRAP_PW -l authPriv -u $TRAP_USER"
-    local TRAPSESS_TSM="trapsess -v 3 -Ci -r $RETRYCOUNT -t $TIMEOUT"
+    local TRAPSESS="trapsess -v 3 -r $RETRYCOUNT -t $TIMEOUT"
+    local TRAPSESS_USM="$TRAPSESS -e $TRAP_EID -a MD5 -A $TRAP_PW -x DES -X $TRAP_PW -l authPriv -u $TRAP_USER"
+    local TRAPSESS_TSM=$TRAPSESS
 
     $NOTE $FUNCNAME
 
     cp $conf_in $conf
 
-#    echo "[snmp] clientaddr [$IPv6_DEV0]" >> $conf
-#    echo "[snmp] clientaddr $IPv4_DEV0" >> $conf
-
 #    echo "engineID $TRAP_EID" >> $conf
 #    echo "oldEngineID $TRAP_EID" >> $conf
     echo "exactEngineID $TRAP_EID" >> $conf
 
-    echo "createUser -e $TRAP_EID $TRAP_USER MD5 \"$TRAP_PW\" DES \"$TRAP_PW\"" >> $conf
     echo "createUser $USM_USER MD5 \"$USM_PW\" DES \"$USM_PW\"" >> $conf
     echo "rwuser $USM_USER" >> $conf
-    echo "rouser -s usm $TRAP_USER" >> $conf
     echo "trapcommunity public" >> $conf
     echo "[snmp] $LOGTIMESTAMP" >> $conf
 
@@ -214,9 +211,8 @@ function create_snmpd_conf ()
     fi
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
-	echo "[snmp] trustCert $caCert" >> $conf
-	echo "[snmp] localCert $appCert" >> $conf
-	echo "[snmp] peerCert $serverCert" >> $conf
+	echo "[snmp] localCert $snmpdCert" >> $conf
+	echo "[snmp] peerCert $trapdCert" >> $conf
 	echo "certSecName 10 $appCert --cn" >> $conf
 	echo "rwuser -s tsm $TSM_USER authpriv" >> $conf
 
@@ -241,10 +237,8 @@ function create_snmptrapd_conf ()
     echo "authUser log $TRAP_USER" >> $conf
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
-	echo "[snmp] trustCert $caCert" >> $conf
-	echo "[snmp] peerCert $appCert" >> $conf
-	echo "[snmp] localCert $serverCert" >> $conf
-	echo "certSecName 9 $appCert --cn" >> $conf
+	echo "[snmp] localCert $trapdCert" >> $conf
+	echo "certSecName 10 $snmpdCert --cn" >> $conf
 	echo "authuser log -s tsm $TSM_USER authpriv" >> $conf
     fi
     echo [snmp] $LOGTIMESTAMP >> $conf
@@ -261,7 +255,7 @@ function create_snmp_conf ()
     echo "defCommunity $SNMP_COMMUNITY" >> $conf
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "localCert $appCert" >> $conf
-	echo "peerCert  $serverCert" >> $conf
+	echo "peerCert  $snmpdCert" >> $conf
     fi
     echo $LOGTIMESTAMP >> $conf
 }
@@ -418,14 +412,16 @@ function configure_mib_dtlsudp()
     fi
 
     # snmpTargetParams
+    set -x
     $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsRowStatus.$obj = 5
     if [ $? != 0 ]; then exit -1; fi
+    set +x
 
     $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsStorageType.$obj = 3
     if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 3
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.$obj = 4
-	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = __BOGUS__
+	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $PRIME_EMAIL
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 3
     else
 	if [ $SNMP_PROTOCOL == "3" ]; then
@@ -446,11 +442,12 @@ function configure_mib_dtlsudp()
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyTag.$obj = $link
     if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
 	# inform
-	$SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyType.$obj = 2
+	notifytype=2
     else
 	# trap
-	$SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyType.$obj = 1
+	notifytype=1
     fi
+    $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyType.$obj = $notifytype
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.$obj = 3
 
     # snmpTargetAddr
