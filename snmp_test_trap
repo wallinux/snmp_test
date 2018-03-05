@@ -6,8 +6,9 @@
 [ -z "$DTLSUDP6" ] && DTLSUDP6=yes
 [ -z "$TCPDUMP" ] && TCPDUMP=yes
 [ -z "$REMOTE" ] && REMOTE=yes
-[ -z "$SNMP_PROTOCOL" ] && SNMP_PROTOCOL="3"
+[ -z "$SNMP_PROTOCOL" ] && SNMP_PROTOCOL=3
 [ -z "$SETX" ] && SETX=""
+[ -z "$INFORM" ] && INFORM=yes
 
 [ -z "$IPDEV0" ] && IPDEV0=eth0
 [ -z "$LOCAL_HOSTNAME" ] && LOCAL_HOSTNAME=$(hostname)
@@ -177,7 +178,10 @@ function create_snmpd_conf ()
 {
     local conf_in=$1
     local conf=$2
-    local TRAPSESS="trapsess -v 3 -r $RETRYCOUNT -t $TIMEOUT"
+    if [ $INFORM == "yes" ]; then
+	inform="-Ci"
+    fi
+    local TRAPSESS="trapsess $inform -v 3 -r $RETRYCOUNT -t $TIMEOUT"
     local TRAPSESS_USM="$TRAPSESS -e $TRAP_EID -a MD5 -A $TRAP_PW -x DES -X $TRAP_PW -l authPriv -u $TRAP_USER"
     local TRAPSESS_TSM=$TRAPSESS
 
@@ -233,6 +237,7 @@ function create_snmptrapd_conf ()
     $NOTE $FUNCNAME
 
     cp $conf_in $conf
+    echo "exactEngineID $TRAP_EID" >> $conf
     echo createUser -e $TRAP_EID $TRAP_USER MD5 \"$TRAP_PW\" DES \"$TRAP_PW\" >> $conf
     echo "authUser log $TRAP_USER" >> $conf
 
@@ -406,17 +411,14 @@ function configure_mib_dtlsudp()
     if [ "$?" -eq 0 ]; then
 	# TSM
 	local SNMPSET="snmpset -v 3 --defSecurityModel=tsm $host"
+	local SNMPSET="snmpset -v 3 $host"
     else
 	# USM
 	local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host"
     fi
 
     # snmpTargetParams
-    set -x
     $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsRowStatus.$obj = 5
-    if [ $? != 0 ]; then exit -1; fi
-    set +x
-
     $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsStorageType.$obj = 3
     if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 3
@@ -440,13 +442,17 @@ function configure_mib_dtlsudp()
     # snmpNotify
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.$obj = 5
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyTag.$obj = $link
-    if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
-	# inform
+    if [ $INFORM == "yes" ]; then
 	notifytype=2
     else
 	# trap
 	notifytype=1
     fi
+    #TMP FIX
+    #if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
+	# inform
+#	notifytype=2
+ #   fi
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyType.$obj = $notifytype
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.$obj = 3
 
@@ -547,10 +553,10 @@ prepare
 set_servers
 snmp_start
 
-CONFIG_HOST=$IPv4_HOST:$SNMPD_PORT
+#CONFIG_HOST=$IPv4_HOST:$SNMPD_PORT
 #CONFIG_HOST=udp6:[$IPv6_HOST]:$SNMPD_PORT
-#CONFIG_HOST=dtlsudp:$IPv4_HOST:$SNMPD_PORT
-#CONFIG_HOST=dtlsudp6:[$IPv6_HOST]:$SNMPD_PORT
+CONFIG_HOST=dtlsudp:$IPv4_LO:$DTLSUDP_PORT
+#CONFIG_HOST=dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT
 
 if [ $trap_target = local ]; then
     CONFIG_IPv4=$IPv4_DEV0
