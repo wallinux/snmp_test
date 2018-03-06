@@ -94,7 +94,7 @@ snmp.terminal.%:
 
 snmp.build_net_snmp: snmp.start # Build and install net-snmp in the snmp container
 	$(MAKE) snmp.build_net_snmp.AW_latest SNMP_CONTAINER=$(SNMP_CONTAINER_0)
-	$(MAKE) snmp.build_net_snmp.AW_v5.7.3 SNMP_CONTAINER=$(SNMP_CONTAINER_1)
+	$(MAKE) snmp.build_net_snmp.AW_v573 SNMP_CONTAINER=$(SNMP_CONTAINER_1)
 
 snmp.build_net_snmp.%:
 	$(TRACE)
@@ -125,5 +125,5 @@ snmp.help:
 
 help:: snmp.help
 	$(GREEN)
-	$(ECHO) -e "\nSet SNMP_TAG(default = $(SNMP_TAG)) to run container, available SNMP_TAGS are <latest:AW_latest:AW_v5.7.3>"
+	$(ECHO) -e "\nSet SNMP_TAG(default = $(SNMP_TAG)) to run container, available SNMP_TAGS are <latest:AW_latest:AW_v573>"
 	$(NORMAL)
