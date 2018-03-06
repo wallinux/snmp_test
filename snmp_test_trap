@@ -166,7 +166,7 @@ function create_cert ()
 
     if [ ! -d $CERTDIR ]; then
 	$NET_SNMP_CERT genca -I -n $PRIME_CA -e $PRIME_EMAIL -C $CERTDIR
-	$NET_SNMP_CERT gencert -I -t snmpd --cn $TSM_USER -C $CERTDIR
+	$NET_SNMP_CERT gencert -I -t snmpd --cn $TSM_USER --san email:${PRIME_EMAIL} -C $CERTDIR
 	$NET_SNMP_CERT gencert -I -t snmpapp --cn $TSM_USER -C $CERTDIR
 	$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TRAP_USER -C $CERTDIR
     fi
@@ -256,6 +256,7 @@ function create_snmptrapd_conf ()
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "[snmp] localCert $trapdCert" >> $conf
 	echo "certSecName 10 $snmpdCert --cn" >> $conf
+#	echo "certSecName 10 $snmpdCert --rfc822 $PRIME_EMAIL" >> $conf
 	echo "authuser log -s tsm $TSM_USER authpriv" >> $conf
     fi
     echo [snmp] $LOGTIMESTAMP >> $conf
