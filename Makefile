@@ -2,8 +2,9 @@ default: help
 
 include common.mk
 
-REGISTRY_PORT	= 5000
-REGISTRY_SERVER	= localhost:$(REGISTRY_PORT)
+DOCKER_ID_USER		= wallinux
+##REGISTRY_SERVER	= localhost:5000
+REGISTRY_SERVER		= $(DOCKER_ID_USER)
 
 ################################################################
 

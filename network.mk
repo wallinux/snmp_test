@@ -19,7 +19,6 @@ network.connect.%: # Connect network to container=%
 	$(TRACE)
 	$(DOCKER) network connect $(DOCKER_NETWORK) $*
 
-
 network.disconnect.%: # Disconnect network to container=%
 	$(TRACE)
 	$(DOCKER) network disconnect $(DOCKER_NETWORK) $*
