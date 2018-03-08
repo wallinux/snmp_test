@@ -117,6 +117,7 @@ function prepare () {
 PREPARE_REMOTE=$TESTDIR/prepare_remote
 function prepare_remote () {
     #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
+    #local snmptrapd_debug="-d"
 
     if [ "$REMOTE" == "yes" ]; then
 	if [ ! -e $PREPARE_REMOTE ]; then
@@ -436,7 +437,7 @@ function snmp_start () {
     #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd -d"
     #local snmptrapd_debug="-DALL -d"
     #local snmptrapd_debug="-d"
-    local snmpd_debug="-d"
+    #local snmpd_debug="-d"
 
     $NOTE $FUNCNAME
 
@@ -444,6 +445,7 @@ function snmp_start () {
     snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}
     echo "snmpd -V -a -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[@]}"
     snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[@]}
+    sleep 2
 }
 
 TCPDUMP_CAP=$TESTDIR/tcpdump.pcap
@@ -552,18 +554,17 @@ function snmp_walk () {
     if [ $SNMP_PROTOCOL == "3" ]; then
 	echo $host | grep dtlsudp >/dev/null
 	if [ "$?" -eq 0 ]; then
-	    $BASH "snmpwalk -v $SNMP_PROTOCOL --defSecurityModel=tsm $host . > $SNMPWALK_OUT"
+	    $BASH "snmpbulkwalk -r 1 -t 3 -v $SNMP_PROTOCOL --defSecurityModel=tsm $host . > $SNMPWALK_OUT"
 	else
-	    $BASH "snmpwalk -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host . > $SNMPWALK_OUT"
+	    $BASH "snmpbulkwalk -r 1 -t 3 -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host . > $SNMPWALK_OUT"
 	fi
     else
-	$BASH "snmpwalk -v $SNMP_PROTOCOL $host > $SNMPWALK_OUT"
+	$BASH "snmpbulkwalk -v $SNMP_PROTOCOL $host > $SNMPWALK_OUT"
     fi
     l_status=$?
     if [ $l_status -eq 0 ]; then
 	$HEAD $SNMPWALK_OUT
     fi
-
     walk_status=$((walk_status + $l_status))
 }
 
@@ -593,6 +594,7 @@ function remote_snmp_walk () {
 
 function f_walk()
 {
+    sleep 5
     for server in ${GETSERVERS[@]}; do
 	snmp_walk $server
     done
