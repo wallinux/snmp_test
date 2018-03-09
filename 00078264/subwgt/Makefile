@@ -1,6 +1,5 @@
-OBJS=subwgt.o netSnmpIETFWGTable.o
-#TARGETS=example-demon
-TARGETS=subwgt
+OBJS=/tmp/netSnmpIETFWGTable.o
+TARGETS=/tmp/subwgt
 
 CFLAGS=-I. `net-snmp-config --cflags`
 BUILDLIBS=`net-snmp-config --libs`
@@ -11,11 +10,11 @@ DLFLAGS=-fPIC -shared
 
 all: $(TARGETS)
 
-subwgt: $(OBJS)
-	$(CC) -o subwgt $(OBJS)  $(BUILDAGENTLIBS)
+/tmp/subwgt: subwgt.c $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $< $(OBJS) $(BUILDAGENTLIBS) -pthread
 
-netSnmpIETFWGTable.o: netSnmpIETFWGTable.c Makefile
-	$(CC) $(CFLAGS) $(DLFLAGS) -c -o netSnmpIETFWGTable.o netSnmpIETFWGTable.c
+/tmp/netSnmpIETFWGTable.o: netSnmpIETFWGTable.c Makefile
+	$(CC) $(CFLAGS) $(DLFLAGS) -c -o $@ $<
 
 clean:
 	rm -f $(OBJS) $(TARGETS)

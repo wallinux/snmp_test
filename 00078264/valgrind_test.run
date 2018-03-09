@@ -4,10 +4,16 @@ MIB=NET-SNMP-MIB::netSnmp.2.2.1.1.2.3.98.111.98
 HOST=localhost:11167
 VALGRIND_LOG=/tmp/valgrind.log
 SNMPD_LOG=/tmp/snmpd.log
+SUBWGT_LOG=/tmp/subwgt.log
+SUBWGT=/tmp/subwgt
 
 #snmpd_dbg="-d"
 
+make -s -C subwgt clean
+make -s -C subwgt all
+
 ulimit -c unlimited
+rm -f core
 
 # valgrind exec name is memcheck-amd64-linux
 killall memcheck-amd64-linux
@@ -15,30 +21,34 @@ killall snmpd
 sleep 2
 
 snmpd $snmpd_dbg -Lf $SNMPD_LOG -x /tmp/snmp-test/var/agentx/master -c $PWD/snmpd.conf $HOST
-valgrind --tool=memcheck --leak-check=full --log-file=$VALGRIND_LOG subwgt/subwgt &
+valgrind --tool=memcheck --leak-check=full --log-file=$VALGRIND_LOG $SUBWGT &
 valgrind_pid=$!
 echo WG_PID: $valgrind_pid
 sleep 5
 
 # OK
 snmpset -On -v2c -c topsecret $HOST $MIB s abc $MIB s xyz
+sleep 1
+snmpset -On -v2c -c topsecret $HOST $MIB s 123 $MIB s 456
+sleep 1
+snmpset -On -v2c -c topsecret $HOST $MIB s cba $MIB s zxy
 
 kill -STOP $valgrind_pid
-cp sd.log sd1.log
 sleep 3
 snmpset -On -v2c -c topsecret $HOST $MIB s abc $MIB s xyz
 sleep 3
 kill -CONT $valgrind_pid
-sleep 2
+sleep 20
+set -x
+snmpset -On -v2c -c topsecret $HOST $MIB s kalle $MIB s pelle
+snmpget -On -v2c -c topsecret $HOST $MIB
 
-#cat sd.log
+#cat $SUBWGT_LOG
 #cat $SNMPD_LOG
 grep Invalid $VALGRIND_LOG >/dev/null
 if [ $? = 0 ]; then
     echo "FAIL: TEST crashed, see $VALGRIND_LOG"
 else
     echo "PASS: TEST OK"
+    kill $valgrind_pid
 fi
-    
-
-

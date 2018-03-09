@@ -1,20 +1,26 @@
-#!/bin/sh
+#!/bin/bash
 
 MIB=NET-SNMP-MIB::netSnmp.2.2.1.1.2.3.98.111.98
 HOST=localhost:11167
-VALGRIND_LOG=/tmp/valgrind.log
 SNMPD_LOG=/tmp/snmpd.log
+SUBWGT_LOG=/tmp/subwgt.log
+SUBWGT=/tmp/subwgt
 
 #snmpd_dbg="-d"
 
+make -s -C subwgt clean
+make -s -C subwgt all
+
+echo '/tmp/core.%e.%p' > /proc/sys/kernel/core_pattern
 ulimit -c unlimited
-rm -f core
+rm -f /tmp/core.*
+
 killall snmpd
-killall subwgt/subwgt
+killall subwgt
 sleep 2
 
 snmpd $snmpd_dbg -Lf $SNMPD_LOG -x /tmp/snmp-test/var/agentx/master -c $PWD/snmpd.conf $HOST
-subwgt/subwgt &
+$SUBWGT 1 &
 subwgt_pid=$!
 echo SUBWGT_PID: $subwgt_pid
 sleep 5
@@ -24,22 +30,20 @@ snmpset -On -v2c -c topsecret $HOST $MIB s abc $MIB s xyz
 
 # CRASH
 kill -STOP $subwgt_pid
-cp sd.log sd1.log
 sleep 3
 snmpset -On -v2c -c topsecret $HOST $MIB s abc $MIB s xyz
 sleep 3
 kill -CONT $subwgt_pid
-sleep 2
-
-snmpset -On -v2c -c topsecret $HOST $MIB s abc $MIB s xyz
-#cat sd.log
+sleep 15
+snmpset -On -v2c -c topsecret $HOST $MIB s 123 $MIB s 456
+snmpget -On -v2c -c topsecret $HOST $MIB
+#cat $SUBWGT_LOG
 #cat $SNMPD_LOG
 
-if [ -e core ]; then
+if [ -e /tmp/core.* ]; then
     echo "FAIL: TEST crashed, see core file"
 else
     echo "PASS: TEST OK"
+    kill $subwgt_pid
 fi
-    
-
 
