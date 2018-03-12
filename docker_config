@@ -12,7 +12,7 @@ export REMOTE_TCPDUMP=no
 export SETX="-x"
 export EXTRA="no"
 
-if [ $# == 0 ]; then
+if [ $# = 0 ]; then
    IP=3
 else
    IP=$1

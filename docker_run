@@ -27,6 +27,7 @@ function create_container ()
 	   sh -c "if [ ! -e /root/.ssh/id_rsa ]; then ssh-keygen -b 2048 -t rsa -f /root/.ssh/id_rsa -q -N ''; fi"
     docker exec $container \
 	   sh -c "rmdir snmp-test; git clone https://github.com/wallinux/snmp_test.git"
+    docker exec -it $container sh -c "/etc/init.d/ssh start"
 }
 
 function start ()
@@ -63,13 +64,19 @@ function terminal ()
     gnome-terminal --command "docker exec -it snmp_0_$SNMP_TAG sh -c \"/bin/bash\"" &
 }
 
+function test ()
+{
+    docker exec -it snmp_0_$SNMP_TAG bash -c "cd snmp_test; . ./docker_config; ./snmp_test -C"
+}
+
+
 if [ $# = 0 ]; then
-    echo "$0 <start|stop|shell|terminal> [tag]"
+    echo "$0 <start|stop|shell|terminal|test> [tag]"
     echo " start:    start containers (snmp_0_$SNMP_TAG & snmp_1_$SNMP_TAG)"
     echo " stop:     stop  containers (snmp_0_$SNMP_TAG & snmp_1_$SNMP_TAG)"
     echo " connect:  connect to container (snmp_0_$SNMP_TAG)"
     echo " terminal: start gnome-terminal and connect to container (snmp_0_$SNMP_TAG)"
-    
+    echo " test:     run a simple snmp test in container"
 else
     $1
 fi
