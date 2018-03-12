@@ -1,8 +1,8 @@
 # snmp.mk
 
 SNMP_TAG		?= latest
-SNMP_TAGS		= latest AW_latest AW_v573
-SNMP_IMAGE		= snmp:$(SNMP_TAG)
+SNMP_TAGS		= master AW_latest AW_v573
+SNMP_IMAGE		= $(REGISTRY_SERVER)/snmp:$(SNMP_TAG)
 SNMP_CONTAINER_0	= snmp_0_$(SNMP_TAG)
 SNMP_CONTAINER_1	= snmp_1_$(SNMP_TAG)
 SNMP_CONTAINER		?= $(SNMP_CONTAINER_0)
@@ -19,6 +19,17 @@ snmp.build: # Build snmp image
 	$(DOCKER) build --pull -f snmp/Dockerfile -t "snmp" .
 	$(MKSTAMP)
 
+snmp.build_net_snmp: snmp.build # Build and install net-snmp in the snmp container
+	$(MAKE) snmp.start SNMP_IMAGE=snmp:latest
+	$(Q)$(foreach tag, $(SNMP_TAGS), make snmp.build_net_snmp.$(tag); )
+	$(MAKE) snmp.stop  SNMP_IMAGE=snmp:latest
+
+snmp.build_net_snmp.%:
+	$(TRACE)
+	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "cd net-snmp; make -i uninstall; make -i distclean; git co -b $* wayline/$*" || true
+	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "./build"
+	$(MAKE) snmp.commit.$(SNMP_CONTAINER) SNMP_TAG=$*
+
 snmp.prepare.%:
 	$(TRACE)
 	$(eval host_timezone=$(shell cat /etc/timezone))
@@ -28,7 +39,7 @@ snmp.prepare.%:
 	$(DOCKER) exec $* \
 		sh -c "if [ ! -e /root/.ssh/id_rsa ]; then ssh-keygen -b 2048 -t rsa -f /root/.ssh/id_rsa -q -N ''; fi"
 
-snmp.create: snmp.build # Create a snmp containers
+snmp.create: # Create a snmp containers
 	$(TRACE)
 	$(Q)$(foreach container, $(SNMP_CONTAINERS), make -s snmp.create.$(container); )
 
@@ -68,7 +79,7 @@ snmp.STOP: # Stop ALL snmp containers
 
 snmp.stop.%:
 	$(TRACE)
-	$(DOCKER) stop $*
+	$(DOCKER) stop $* || true
 	$(call rmstamp,snmp.start.$*)
 
 snmp.rm: # Remove snmp container
@@ -83,12 +94,12 @@ snmp.rm.%:
 	$(DOCKER) rm $* || true
 	$(call rmstamp,snmp.create.$*)
 
-snmp.rmi: # Remove snmp image
+snmp.rmi: snmp.rm # Remove snmp image
 	$(TRACE)
-	$(DOCKER) rmi $(SNMP_IMAGE)
+	$(DOCKER) rmi $(SNMP_IMAGE) || true
 	$(call rmstamp,snmp.build)
 
-snmp.RMI: snmp.RM # Remove ALL snmp images
+snmp.RMI: # Remove ALL snmp images
 	$(Q)$(foreach tag, $(SNMP_TAGS), make -s snmp.rmi SNMP_TAG=$(tag); )
 
 
@@ -109,39 +120,28 @@ snmp.terminal.%:
 	$(TRACE)
 	$(Q)gnome-terminal --command "docker exec -it $* sh -c \"/bin/bash\"" &
 
-snmp.build_net_snmp: snmp.start # Build and install net-snmp in the snmp container
-	$(MAKE) snmp.build_net_snmp.AW_latest SNMP_CONTAINER=$(SNMP_CONTAINER_0)
-	$(MAKE) snmp.build_net_snmp.AW_v573 SNMP_CONTAINER=$(SNMP_CONTAINER_1)
-	$(MAKE) snmp.stop
-	$(MAKE) snmp.rm
-
-snmp.build_net_snmp.%:
-	$(TRACE)
-	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "cd net-snmp; git co -b $* wayline/$*" || true
-	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "./build"
-	$(MAKE) snmp.commit.$(SNMP_CONTAINER) SNMP_TAG=$*
-
 snmp.commit.%:
 	$(DOCKER) commit $* $(SNMP_IMAGE)
 
 snmp.tag:
-	$(DOCKER) tag $(SNMP_IMAGE) $(REGISTRY_SERVER)/$(SNMP_IMAGE)
+	$(DOCKER) tag $(SNMP_IMAGE) $(SNMP_IMAGE)
 
 snmp.push: snmp.tag # Push image to registry
-	$(DOCKER) push $(REGISTRY_SERVER)/$(SNMP_IMAGE)
+	$(DOCKER) push $(SNMP_IMAGE)
 
 snmp.PUSH: # Push ALL snmp images to registry
 	$(Q)$(foreach tag, $(SNMP_TAGS), make -s snmp.push SNMP_TAG=$(tag); )
+	$(MAKE) snmp.push SNMP_TAG=latest
 
 snmp.pull: # Pull image from registry
-	$(DOCKER) pull $(REGISTRY_SERVER)/$(SNMP_IMAGE)
+	$(DOCKER) pull $(SNMP_IMAGE)
 
 snmp.PULL: # Pull ALL snmp images from registry
 	$(Q)$(foreach tag, $(SNMP_TAGS), make -s snmp.pull SNMP_TAG=$(tag); )
 
 pull:: snmp.PULL
 
-snmp.distclean: snmp.RMI network.clean
+snmp.distclean: snmp.RMI network.rm
 
 snmp.help:
 	$(TRACE)
