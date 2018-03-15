@@ -1,0 +1,22 @@
+TARGETDIR=cross
+TARGET=$(TARGETDIR)/subwgt
+
+CFLAGS=-I. -DNETSNMP_ENABLE_IPV6 -fno-strict-aliasing -g -O2 -Ulinux -Dlinux=linux -Wall -Wstrict-prototypes -Wwrite-strings -Wcast-qual
+BUILDAGENTLIBS=-lnetsnmpagent -lnetsnmp
+
+# shared library flags (assumes gcc)
+DLFLAGS=-fPIC -shared
+
+all: $(TARGETDIR) $(TARGET)
+
+$(TARGETDIR):
+	mkdir $@
+
+$(TARGETDIR)/subwgt: subwgt.c $(TARGETDIR)/netSnmpIETFWGTable.o
+	$(CC) $(CFLAGS) -o $@ $< $(TARGETDIR)/netSnmpIETFWGTable.o $(BUILDAGENTLIBS) -pthread
+
+$(TARGETDIR)/netSnmpIETFWGTable.o: netSnmpIETFWGTable.c Makefile
+	$(CC) $(CFLAGS) $(DLFLAGS) -c -o $@ $<
+
+clean:
+	rm -rf $(TARGETDIR)
