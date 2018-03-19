@@ -1,5 +1,6 @@
 #!/bin/bash
 cd /root/net-snmp
+autoreconf
 ./configure --prefix=/usr \
                 --with-persistent-directory=/var/lib/net-snmp \
                 --with-mib-modules='smux tlstm-mib tsm-mib examples/example examples/notification' \
