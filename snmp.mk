@@ -1,7 +1,7 @@
 # snmp.mk
 
 SNMP_TAG		?= latest
-SNMP_TAGS		= master AW_latest AW_v573
+SNMP_TAGS		= master WR8 WR8_prime WR8_wip
 SNMP_IMAGE		= $(REGISTRY_SERVER)/snmp:$(SNMP_TAG)
 SNMP_CONTAINER_0	= snmp_0_$(SNMP_TAG)
 SNMP_CONTAINER_1	= snmp_1_$(SNMP_TAG)
