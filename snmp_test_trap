@@ -14,7 +14,6 @@
 [ -z "$DEBUG" ] && DEBUG=no
 
 [ -z "$IPDEV0" ] && IPDEV0=eth0
-[ -z "$LOCAL_HOSTNAME" ] && LOCAL_HOSTNAME=$(hostname)
 
 [ -z "$REMOTE_IPDEV0" ] && REMOTE_IPDEV0=eth0
 [ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.149
@@ -73,7 +72,7 @@ IPv4_DEV0_LAST=$(echo $IPv4_DEV0 | cut -d'.' -f4)
 IPv6_HOST=::
 IPv6_LO=::1
 
-TCPDUMP_TIMEOUT=35
+TCPDUMP_TIMEOUT=70
 if [ "$KILLSNMPD" == "yes" ]; then
     TCPDUMP_TIMEOUT=5
 fi
@@ -163,12 +162,22 @@ function prepare_config ()
 function create_cert ()
 {
     $NOTE $FUNCNAME
-
     if [ ! -d $CERTDIR ]; then
-	$NET_SNMP_CERT genca -I -n $PRIME_CA -e $PRIME_EMAIL -C $CERTDIR
-	$NET_SNMP_CERT gencert -I -t snmpd --cn $TSM_USER --san email:${PRIME_EMAIL} -C $CERTDIR
-	$NET_SNMP_CERT gencert -I -t snmpapp --cn $TSM_USER -C $CERTDIR
-	$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TRAP_USER -C $CERTDIR
+	if [ "1" == "0" ]; then
+	    $NET_SNMP_CERT genca   -I -n $PRIME_CA -C $CERTDIR
+	    $NET_SNMP_CERT gencsr  -I -t snmpd -n $PRIME_CA --san DNS:$(hostname) -C $CERTDIR
+	    $NET_SNMP_CERT gencsr  -I -t snmptrapd -n $TRAP_USER --san email:${PRIME_EMAIL} -C $CERTDIR
+	    $NET_SNMP_CERT gencsr  -I -t snmpapp -n $TSM_USER -C $CERTDIR
+	    $NET_SNMP_CERT signcsr -I --with-ca $PRIME_CA --csr snmpd -C $CERTDIR
+	    $NET_SNMP_CERT signcsr -I --with-ca $PRIME_CA --csr snmptrapd -C $CERTDIR
+	    $NET_SNMP_CERT signcsr -I --with-ca $PRIME_CA --csr snmpapp -C $CERTDIR
+	    mv $CERTDIR/tls/newcerts/*.crt $CERTDIR/tls/certs/
+	else
+	    $NET_SNMP_CERT genca   -I -n $PRIME_CA -e $PRIME_EMAIL -C $CERTDIR
+	    $NET_SNMP_CERT gencert -I -t snmpd --cn $TSM_USER --san email:${PRIME_EMAIL} -C $CERTDIR
+	    $NET_SNMP_CERT gencert -I -t snmpapp --cn $TSM_USER -C $CERTDIR
+	    $NET_SNMP_CERT gencert -I -t snmptrapd --cn $TRAP_USER -C $CERTDIR
+	fi
     fi
 }
 
@@ -204,8 +213,10 @@ function create_snmpd_conf ()
 #    echo "engineID $TRAP_EID" >> $conf
 #    echo "oldEngineID $TRAP_EID" >> $conf
     echo "exactEngineID $TRAP_EID" >> $conf
+#    echo "snmpTlstmCertToTSNEntry 100 --sha1 daf840263775956481cde7d6f8594fb2e40f246b --any  1"  >> $conf
 
     echo "createUser $USM_USER MD5 \"$USM_PW\" DES \"$USM_PW\"" >> $conf
+    echo "createUser $TRAP_USER MD5 \"$TRAP_PW\" DES \"$TRAP_PW\"" >> $conf
     echo "rwuser $USM_USER" >> $conf
     echo "trapcommunity public" >> $conf
     echo "[snmp] $LOGTIMESTAMP" >> $conf
@@ -227,6 +238,7 @@ function create_snmpd_conf ()
     fi
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
+	echo "[snmp] trustCert $caCert" >> $conf
 	echo "[snmp] localCert $snmpdCert" >> $conf
 	echo "[snmp] peerCert $trapdCert" >> $conf
 	echo "certSecName 10 $appCert --cn" >> $conf
@@ -254,6 +266,7 @@ function create_snmptrapd_conf ()
     echo "authUser log $TRAP_USER" >> $conf
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
+	echo "[snmp] trustCert $caCert" >> $conf
 	echo "[snmp] localCert $trapdCert" >> $conf
 	echo "certSecName 10 $snmpdCert --cn" >> $conf
 #	echo "certSecName 10 $snmpdCert --rfc822 $PRIME_EMAIL" >> $conf
@@ -305,13 +318,15 @@ function set_servers()
 
 function snmp_start () {
     if [ "$DEBUG" == "yes" ]; then
-	local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd -d"
+	local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,9:openssl:fingerprint,cert:find:params, -d"
 	#local snmptrapd_debug="-DALL -d"
 
-	local snmpd_debug="-d -Dtrap,trap:*,usm,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,snmpv3_build,netsnmp_udp6,AW,snmp_sess_add,target_sessions,netsnmp_udpbase,snmpv3,netsnmp_sockaddr_in,netsnmp_sockaddr_in6_2,snmp_api,cert,sslctx_client"
+	local snmpd_debug="-d -Dtrap,trap:*,usm,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,snmpv3_build,netsnmp_udp6,AW,snmp_sess_add,target_sessions,netsnmp_udpbase,snmpv3,netsnmp_sockaddr_in,netsnmp_sockaddr_in6_2,snmp_api,9:cert,sslctx_client,tls_x509:verif,tlstmCertToTSNTable:save,read_config"
 	#local snmpd_debug="-DALL -d"
     fi
     $NOTE $FUNCNAME
+    echo '/tmp/core.%e.%p' > /proc/sys/kernel/core_pattern
+    ulimit -c unlimited
 
     echo "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}"
     snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}
@@ -335,7 +350,6 @@ function tcpdump_capture ()
 function tcpdump_read ()
 {
     if [ "$TCPDUMP" == "yes" ]; then
-	sleep $1
 	# workaround: need a last package to close the tcpdump capture
 	ping6 -c 1 ::1 >/dev/null
 	tcpdump -T snmp -r $TCPDUMP_CAP \
@@ -424,7 +438,6 @@ function configure_mib_dtlsudp()
     echo $host | grep dtlsudp >/dev/null
     if [ "$?" -eq 0 ]; then
 	# TSM
-	local SNMPSET="snmpset -v 3 --defSecurityModel=tsm $host"
 	local SNMPSET="snmpset -v 3 $host"
     else
 	# USM
@@ -462,11 +475,6 @@ function configure_mib_dtlsudp()
 	# trap
 	notifytype=1
     fi
-    #TMP FIX
-    #if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
-	# inform
-#	notifytype=2
- #   fi
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyType.$obj = $notifytype
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.$obj = 3
 
@@ -497,35 +505,41 @@ function configure_mib_dtlsudp()
 function get_mib()
 {
     local host=$1
-    local oids="SNMP-TARGET-MIB::snmpTargetAddrTable SNMP-TARGET-MIB::snmpTargetParamsTable SNMP-NOTIFICATION-MIB::snmpNotifyTable"
+    local oids="SNMP-TARGET-MIB SNMP-NOTIFICATION-MIB SNMP-TLS-TM-MIB"
 
     $NOTE $FUNCNAME $host
 
+    echo $host | grep dtlsudp >/dev/null
+    if [ "$?" -eq 0 ]; then
+	$BASH "snmpbulkwalk -v 3 $host . > $SNMPWALK_OUT"
+    else
+	$BASH "snmpbulkwalk -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host . > $SNMPWALK_OUT"
+    fi
     for oid in $oids; do
-	echo $host | grep dtlsudp >/dev/null
-	if [ "$?" -eq 0 ]; then
-	    $BASH "snmpbulkwalk -v 3 --defSecurityModel=tsm $host $oid"
-	else
-	    $BASH "snmpbulkwalk -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host $oid"
-	fi
+	grep "^${oid}" $SNMPWALK_OUT
     done
-    $BASH "snmpbulkwalk -v 3 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host . > $SNMPWALK_OUT"
 }
 
 function usage()
 {
     echo -e "\n$(basename $0) -h -c -C trap_traget\n"
-    echo -e " trap_target = <local|remote>"
+    echo -e " trap_target = <loopback|local|remote>"
     echo -e " -c   clean: stop snmp servers and remove tmp directory before running the test"
     echo -e " -C   cleanall: including generated certificates"
     echo -e ""
-    echo -e " use ENV variables to configure test"
-    echo -e "   IPv4=$IPv4"
-    echo -e "   IPv6=$IPv6"
-    echo -e "   DTLSUDP4=$DTLSUDP4"
-    echo -e "   DTLSUDP6=$DTLSUDP6"
-    echo -e "   TCPDUMP=$TCPDUMP"
-    echo -e "   REMOTE=$REMOTE"
+    echo -e "use ENV variables to configure test"
+    echo -n " IPv4=$IPv4"
+    echo -n " IPv6=$IPv6"
+    echo -n " DTLSUDP4=$DTLSUDP4"
+    echo -n " DTLSUDP6=$DTLSUDP6"
+    echo -n " TCPDUMP=$TCPDUMP"
+    echo -n " REMOTE=$REMOTE"
+#    echo -n " SNMP_PROTOCOL=$SNMP_PROTOCOL"
+    echo -n " INFORM=$INFORM"
+    echo -n " KILLSNMPD=$KILLSNMPD"
+    echo -n " SETUP_TRAPSESS=$SETUP_TRAPSESS"
+    echo -n " DEBUG=$DEBUG"
+    echo -e " $0"
 }
 
 ###########################################
@@ -604,11 +618,12 @@ fi
 
 if [ "$KILLSNMPD" == "yes" ]; then
     killall snmpd
-    sleep 3
 fi
 
+sleep $TCPDUMP_TIMEOUT
+
 if [ "$TCPDUMP" == "yes" ]; then
-    tcpdump_read $TCPDUMP_TIMEOUT
+    tcpdump_read
     cp $TCPDUMP_CAP .
 fi
 
