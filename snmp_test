@@ -116,8 +116,10 @@ function prepare () {
 
 PREPARE_REMOTE=$TESTDIR/prepare_remote
 function prepare_remote () {
-    #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
-    #local snmptrapd_debug="-d"
+    if [ "$DEBUG" == "yes" ]; then
+	local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd -d"
+	#local snmptrapd_debug="-d"
+    fi
 
     if [ "$REMOTE" == "yes" ]; then
 	if [ ! -e $PREPARE_REMOTE ]; then
@@ -226,10 +228,8 @@ function create_snmpd_conf ()
 
     cp $conf_in $conf
 
-##    echo "[snmp] clientaddr [$IPv6_DEV0]" >> $conf
-    echo "[snmp] clientaddr [$IPv6_EXTRA]" >> $conf
-##    echo "[snmp] clientaddr $IPv4_DEV0" >> $conf
-##    echo "[snmp] clientaddr $IPv4_EXTRA" >> $conf
+##    echo "[snmp] clientaddr [$IPv6_EXTRA]" >> $conf
+    echo "[snmp] clientaddr $IPv4_EXTRA" >> $conf
 
     echo "createUser $USM_USER MD5 $USM_PW DES $USM_PW" >> $conf
     echo "rwuser $USM_USER" >> $conf
@@ -366,7 +366,7 @@ function set_servers()
 	dev0_servers+=("$IPv4_DEV0:$SNMPD_PORT")
 	trap_dev0_servers+=("udp:$IPv4_DEV0:$SNMPTRAPD_PORT")
 	if [ "$EXTRA" == "yes" ]; then
-#	    SNMPD_SERVERS+=("udp:$IPv4_EXTRA:$SNMPD_PORT")
+	    SNMPD_SERVERS+=("udp:$IPv4_EXTRA:$SNMPD_PORT")
 	    extra_servers+=("$IPv4_EXTRA:$SNMPD_PORT")
 	    trap_extra_servers+=("udp:$IPv4_EXTRA:$SNMPTRAPD_PORT")
 	fi
@@ -382,7 +382,7 @@ function set_servers()
 	dev0_servers+=("udp6:[$IPv6_DEV0]:$SNMPD_PORT")
 	trap_dev0_servers+=("udp6:[$IPv6_DEV0]:$SNMPTRAPD_PORT")
 	if [ "$EXTRA" == "yes" ]; then
-#	    SNMPD_SERVERS+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
+	    SNMPD_SERVERS+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
 	    extra_servers+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
 	    trap_extra_servers+=("udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT")
 	fi
@@ -414,7 +414,7 @@ function set_servers()
 	dev0_servers+=("dtlsudp6:[$IPv6_DEV0]:$DTLSUDP_PORT")
 	trap_dev0_servers+=("dtlsudp6:[$IPv6_DEV0]:$SNMPTRAPD_DTLSUDP_PORT")
 	if [ "$EXTRA" == "yes" ]; then
-#	    SNMPD_SERVERS+=("dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT")
+	    SNMPD_SERVERS+=("dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT")
 	    extra_servers+=("dtlsudp6:[$IPv6_EXTRA]:$DTLSUDP_PORT")
 	    trap_extra_servers+=("dtlsudp6:[$IPv6_EXTRA]:$SNMPTRAPD_DTLSUDP_PORT")
 	fi
@@ -433,13 +433,16 @@ function set_servers()
 }
 
 function snmp_start () {
-    #local snmpd_debug="-Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,transport,netsnmp_udp -d"
-    #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd -d"
-    #local snmptrapd_debug="-DALL -d"
-    #local snmptrapd_debug="-d"
-    #local snmpd_debug="-d"
+    if [ "$DEBUG" == "yes" ]; then
+	local snmpd_debug="-Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,transport,netsnmp_udp,netsnmp_udpbase,netsnmp_udp6,AW -d"
+	local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd -d"
+	#local snmptrapd_debug="-DALL -d"
+	#local snmpd_debug="-DALL -d"
+    fi
 
     $NOTE $FUNCNAME
+    echo '/tmp/core.%e.%p' > /proc/sys/kernel/core_pattern
+    ulimit -c unlimited
 
     echo "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}"
     snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}
@@ -489,7 +492,7 @@ function snmp_get () {
 	    $BASH "snmpget $get_debug -v $SNMP_PROTOCOL --defSecurityModel=tsm $host $oid"
 	else
 	    # USM
-	    $BASH "snmpget -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host $oid"
+	    $BASH "snmpget $get_debug -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host $oid"
 	fi
     else
 	$BASH "snmpget -v $SNMP_PROTOCOL $host $oid"
@@ -502,6 +505,8 @@ function remote_snmp_get () {
     local host=$1
     local l_status=0
     local oid=system.sysDescr.0
+    local get_debug="-Lf $SNMPGET_LOG -Dtsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
+    #local get_debug="-DALL -d"
 
     $NOTE "REMOTE GET $host v$SNMP_PROTOCOL $oid"
     if [ "$REMOTE_TCPDUMP" == "yes" ]; then
@@ -510,9 +515,9 @@ function remote_snmp_get () {
     if [ $SNMP_PROTOCOL == "3" ]; then
 	echo $host | grep dtlsudp >/dev/null
 	if [ "$?" -eq 0 ]; then
-	    $SSH_REMOTE "source $SNMPENV; $BASH \"snmpget -v $SNMP_PROTOCOL --defSecurityModel=tsm $host $oid\""
+	    $SSH_REMOTE "source $SNMPENV; $BASH \"snmpget $get_debug -v $SNMP_PROTOCOL -r 0 --defSecurityModel=tsm $host $oid\""
 	else
-	    $SSH_REMOTE "source $SNMPENV; $BASH \"snmpget -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host $oid\""
+	    $SSH_REMOTE "source $SNMPENV; $BASH \"snmpget $get_debug -v $SNMP_PROTOCOL -r 0 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host $oid\""
 	fi
     else
 	$SSH_REMOTE "source $SNMPENV; $BASH \"snmpget -v $SNMP_PROTOCOL $host $oid\""
@@ -635,7 +640,7 @@ function snmp_trap () {
 	echo $host | grep dtlsudp >/dev/null
 	if [ "$?" -eq 0 ]; then
 	    # TSM
-	    echo NOT WORKING: "snmptrap $trap_debug -r 3 -t 2 -T peerCert=$trapdCert -l authPriv -r 1 -v 3 $host \"\" $TRAP_OID $OID i 555"
+	    $BASH "snmptrap $trap_debug -r 3 -t 2 -T peerCert=$trapdCert -l authPriv -r 1 -v 3 $host \"\" $TRAP_OID $OID i 555"
 	else
 	    # USM
 	    $BASH "snmptrap $trap_debug -e $USM_EID -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER $host \"\" $TRAP_OID $OID i 333"
@@ -732,21 +737,23 @@ function usage()
     echo -e " -c   clean: stop snmp servers and remove tmp directory before running the test"
     echo -e " -C   cleanall: including generated certificates"
     echo -e ""
-    echo -e " use ENV variables to configure test"
-    echo -e "   GET=$GET"
-    echo -e "   WALK=$WALK"
-    echo -e "   TRAP=$TRAP"
-    echo -e "   IPv4=$IPv4"
-    echo -e "   IPv6=$IPv6"
-    echo -e "   DTLSUDP4=$DTLSUDP4"
-    echo -e "   DTLSUDP6=$DTLSUDP6"
-    echo -e "   TCPDUMP=$TCPDUMP"
-    echo -e "   REMOTE=$REMOTE"
-    echo -e "   REMOTE_TCPDUMP=$REMOTE_TCPDUMP"
-    echo -e "   TRACE=$TRACE"
-    echo -e "   SHOWLOGS=$SHOWLOGS"
-    echo -e "   DEBUG=$DEBUG"
-    echo -e "   SNMP_PROTOCOL=$SNMP_PROTOCOL"
+    echo -e "use ENV variables to configure test"
+    echo -n " GET=$GET"
+    echo -n " WALK=$WALK"
+    echo -n " TRAP=$TRAP"
+    echo -n " IPv4=$IPv4"
+    echo -n " IPv6=$IPv6"
+    echo -n " DTLSUDP4=$DTLSUDP4"
+    echo -n " DTLSUDP6=$DTLSUDP6"
+    echo -n " TCPDUMP=$TCPDUMP"
+    echo -n " REMOTE=$REMOTE"
+#    echo -n " REMOTE_TCPDUMP=$REMOTE_TCPDUMP"
+#    echo -n " TRACE=$TRACE"
+#    echo -n " SHOWLOGS=$SHOWLOGS"
+    echo -n " DEBUG=$DEBUG"
+    echo -n " EXTRA=$EXTRA"
+#    echo -n " SNMP_PROTOCOL=$SNMP_PROTOCOL"
+    echo -e " $0"
 }
 
 ###########################################
