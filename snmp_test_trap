@@ -12,6 +12,8 @@
 [ -z "$KILLSNMPD" ] && KILLSNMPD=yes
 [ -z "$SETUP_TRAPSESS" ] && SETUP_TRAPSESS=yes
 [ -z "$DEBUG" ] && DEBUG=no
+# TLS_VALIDATION: peer or trust_anchor
+[ -z "$TLS_VALIDATION" ] && TLS_VALDITATION=peer
 
 [ -z "$IPDEV0" ] && IPDEV0=eth0
 
@@ -163,7 +165,12 @@ function create_cert ()
 {
     $NOTE $FUNCNAME
     if [ ! -d $CERTDIR ]; then
-	if [ "1" == "0" ]; then
+	if [ "$TLS_VALIDATION" == "peer" ]; then
+	    $NET_SNMP_CERT genca   -I -n $PRIME_CA -e $PRIME_EMAIL -C $CERTDIR
+	    $NET_SNMP_CERT gencert -I -t snmpd --cn $TSM_USER --san email:${PRIME_EMAIL} -C $CERTDIR
+	    $NET_SNMP_CERT gencert -I -t snmpapp --cn $TSM_USER -C $CERTDIR
+	    $NET_SNMP_CERT gencert -I -t snmptrapd --cn $TRAP_USER -C $CERTDIR
+	else
 	    $NET_SNMP_CERT genca   -I -n $PRIME_CA -C $CERTDIR
 	    $NET_SNMP_CERT gencsr  -I -t snmpd -n $PRIME_CA --san DNS:$(hostname) -C $CERTDIR
 	    $NET_SNMP_CERT gencsr  -I -t snmptrapd -n $TRAP_USER --san email:${PRIME_EMAIL} -C $CERTDIR
@@ -172,11 +179,6 @@ function create_cert ()
 	    $NET_SNMP_CERT signcsr -I --with-ca $PRIME_CA --csr snmptrapd -C $CERTDIR
 	    $NET_SNMP_CERT signcsr -I --with-ca $PRIME_CA --csr snmpapp -C $CERTDIR
 	    mv $CERTDIR/tls/newcerts/*.crt $CERTDIR/tls/certs/
-	else
-	    $NET_SNMP_CERT genca   -I -n $PRIME_CA -e $PRIME_EMAIL -C $CERTDIR
-	    $NET_SNMP_CERT gencert -I -t snmpd --cn $TSM_USER --san email:${PRIME_EMAIL} -C $CERTDIR
-	    $NET_SNMP_CERT gencert -I -t snmpapp --cn $TSM_USER -C $CERTDIR
-	    $NET_SNMP_CERT gencert -I -t snmptrapd --cn $TRAP_USER -C $CERTDIR
 	fi
     fi
 }
@@ -238,9 +240,13 @@ function create_snmpd_conf ()
     fi
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
-	echo "[snmp] trustCert $caCert" >> $conf
+	if [ "$TLS_VALIDATION" == "peer" ]; then
+	    echo "[snmp] peerCert $trapdCert" >> $conf
+	else
+	    echo "[snmp] trustCert $caCert" >> $conf
+	fi
 	echo "[snmp] localCert $snmpdCert" >> $conf
-	echo "[snmp] peerCert $trapdCert" >> $conf
+
 	echo "certSecName 10 $appCert --cn" >> $conf
 	echo "rwuser -s tsm $TSM_USER authpriv" >> $conf
 
@@ -266,7 +272,9 @@ function create_snmptrapd_conf ()
     echo "authUser log $TRAP_USER" >> $conf
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
-	echo "[snmp] trustCert $caCert" >> $conf
+	if [ "$TLS_VALIDATION" != "peer" ]; then
+	    echo "[snmp] trustCert $caCert" >> $conf
+	fi
 	echo "[snmp] localCert $trapdCert" >> $conf
 	echo "certSecName 10 $snmpdCert --cn" >> $conf
 #	echo "certSecName 10 $snmpdCert --rfc822 $PRIME_EMAIL" >> $conf
@@ -539,6 +547,7 @@ function usage()
     echo -n " KILLSNMPD=$KILLSNMPD"
     echo -n " SETUP_TRAPSESS=$SETUP_TRAPSESS"
     echo -n " DEBUG=$DEBUG"
+    echo -n " TLS_VALIDATION=$TLS_VALIDATION"
     echo -e " $0"
 }
 
