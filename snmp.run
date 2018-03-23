@@ -1,7 +1,7 @@
 #!/bin/sh
 
 if [ $# > 1 ]; then
-    SNMP_TAG=AW_v573
+    SNMP_TAG=WR8_prime
 else
     SNMP_TAG=$2
 fi
@@ -64,19 +64,24 @@ function terminal ()
     gnome-terminal --command "docker exec -it snmp_0_$SNMP_TAG sh -c \"/bin/bash\"" &
 }
 
-function test ()
+function test1 ()
 {
-    docker exec -it snmp_0_$SNMP_TAG bash -c "cd snmp_test; . ./docker_config; ./snmp_test -C"
+    docker exec -it snmp_0_$SNMP_TAG bash -c "cd snmp_test; source ./docker_config; ./snmp_test -h; ./snmp_test -C"
 }
 
+function test2 ()
+{
+    docker exec -it snmp_0_$SNMP_TAG bash -c "cd snmp_test; source ./docker_config; ./snmp_test_trap -h; ./snmp_test_trap -C remote"
+}
 
 if [ $# = 0 ]; then
     echo "$0 <start|stop|shell|terminal|test> [tag]"
     echo " start:    start containers (snmp_0_$SNMP_TAG & snmp_1_$SNMP_TAG)"
     echo " stop:     stop  containers (snmp_0_$SNMP_TAG & snmp_1_$SNMP_TAG)"
-    echo " connect:  connect to container (snmp_0_$SNMP_TAG)"
+    echo " shell:    connect to container (snmp_0_$SNMP_TAG)"
     echo " terminal: start gnome-terminal and connect to container (snmp_0_$SNMP_TAG)"
-    echo " test:     run a simple snmp test in container"
+    echo " test1:    run a simple snmp test in container"
+    echo " test2:    run a simple snmp trap test in container"
 else
     $1
 fi

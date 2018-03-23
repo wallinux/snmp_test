@@ -3,8 +3,7 @@ default: help
 include common.mk
 
 DOCKER_ID_USER		= wallinux
-##REGISTRY_SERVER	= localhost:5000
-REGISTRY_SERVER		= $(DOCKER_ID_USER)
+REGISTRY_SERVER		= localhost:5000
 
 ################################################################
 

@@ -1,8 +1,9 @@
 # snmp.mk
 
+SNMP_REGISTRY_SERVER	= $(DOCKER_ID_USER)
 SNMP_TAG		?= latest
 SNMP_TAGS		= master WR8 WR8_prime WR8_wip
-SNMP_IMAGE		= $(REGISTRY_SERVER)/snmp:$(SNMP_TAG)
+SNMP_IMAGE		?= $(SNMP_REGISTRY_SERVER)/snmp:$(SNMP_TAG)
 SNMP_CONTAINER_0	= snmp_0_$(SNMP_TAG)
 SNMP_CONTAINER_1	= snmp_1_$(SNMP_TAG)
 SNMP_CONTAINER		?= $(SNMP_CONTAINER_0)
@@ -131,7 +132,6 @@ snmp.push: snmp.tag # Push image to registry
 
 snmp.PUSH: # Push ALL snmp images to registry
 	$(Q)$(foreach tag, $(SNMP_TAGS), make -s snmp.push SNMP_TAG=$(tag); )
-	$(MAKE) snmp.push SNMP_TAG=latest
 
 snmp.pull: # Pull image from registry
 	$(DOCKER) pull $(SNMP_IMAGE)
