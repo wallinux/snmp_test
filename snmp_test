@@ -64,6 +64,7 @@ PRIME_CA=ca.prime.com
 USM_USER=usmuser
 USM_PW=kalle123
 USM_EID=80001f8880523983647b8b0357
+PRIVPROTO=AES
 
 IPv4_HOST=0.0.0.0
 IPv4_LO=127.0.0.1
@@ -231,15 +232,15 @@ function create_snmpd_conf ()
 ##    echo "[snmp] clientaddr [$IPv6_EXTRA]" >> $conf
     echo "[snmp] clientaddr $IPv4_EXTRA" >> $conf
 
-    echo "createUser $USM_USER MD5 $USM_PW DES $USM_PW" >> $conf
+    echo "createUser $USM_USER MD5 $USM_PW $PRIVPROTO $USM_PW" >> $conf
     echo "rwuser $USM_USER" >> $conf
     echo "trapcommunity public" >> $conf
     echo [snmp] $LOGTIMESTAMP >> $conf
 
     if [ "$IPv4" == "yes" ]; then
 	if [ $SNMP_PROTOCOL == "3" ]; then
-	    echo "trapsess -v 3 -e $USM_EID -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER udp:$IPv4_DEV0:$SNMPTRAPD_PORT" >> $conf
-	    echo "trapsess -v 3 -e $USM_EID -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER udp:$REMOTE_IPv4:$SNMPTRAPD_PORT" >> $conf
+	    echo "trapsess -v 3 -e $USM_EID -a MD5 -A $USM_PW -x $PRIVPROTO -X $USM_PW -l authPriv -u $USM_USER udp:$IPv4_DEV0:$SNMPTRAPD_PORT" >> $conf
+	    echo "trapsess -v 3 -e $USM_EID -a MD5 -A $USM_PW -x $PRIVPROTO -X $USM_PW -l authPriv -u $USM_USER udp:$REMOTE_IPv4:$SNMPTRAPD_PORT" >> $conf
 	elif [ $SNMP_PROTOCOL == "2c" ]; then
 	    echo "trap2sink udp:$IPv4_LO:$SNMPTRAPD_PORT" >> $conf
 	    echo "trap2sink udp:$REMOTE_IPv4:$SNMPTRAPD_PORT" >> $conf
@@ -248,8 +249,8 @@ function create_snmpd_conf ()
 
     if [ "$IPv6" == "yes" ]; then
 	if [ $SNMP_PROTOCOL == "3" ]; then
-	    echo "trapsess -v 3 -e $USM_EID -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER udp6:$IPv6_DEV0:$SNMPTRAPD_PORT" >> $conf
-	    echo "trapsess -v 3 -e $USM_EID -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER udp6:$REMOTE_IPv6:$SNMPTRAPD_PORT" >> $conf
+	    echo "trapsess -v 3 -e $USM_EID -a MD5 -A $USM_PW -x $PRIVPROTO -X $USM_PW -l authPriv -u $USM_USER udp6:$IPv6_DEV0:$SNMPTRAPD_PORT" >> $conf
+	    echo "trapsess -v 3 -e $USM_EID -a MD5 -A $USM_PW -x $PRIVPROTO -X $USM_PW -l authPriv -u $USM_USER udp6:$REMOTE_IPv6:$SNMPTRAPD_PORT" >> $conf
 	elif [ $SNMP_PROTOCOL == "2c" ]; then
 	    echo "trap2sink udp6:[$IPv6_LO]:$SNMPTRAPD_PORT" >> $conf
 	    echo "trap2sink udp6:[$REMOTE_IPv6]:$SNMPTRAPD_PORT" >> $conf
@@ -280,7 +281,7 @@ function create_snmptrapd_conf ()
     $NOTE $FUNCNAME
 
     cp $conf_in $conf
-    echo createUser -e $USM_EID $USM_USER MD5 \"$USM_PW\" AES \"$USM_PW\" >> $conf
+    echo createUser -e $USM_EID $USM_USER MD5 \"$USM_PW\" $PRIVPROTO \"$USM_PW\" >> $conf
     echo "authUser log $USM_USER" >> $conf
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
@@ -622,7 +623,7 @@ function snmp_inform () {
 	$BASH "snmpinform $inform_debug -T peerCert=$trapdCert -l authPriv -r 1 -v 3 $host \"\" $TRAP_OID $OID i 666"
     else
 	# USM
-	$BASH "snmpinform $inform_debug -e $USM_EID -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER $host \"\" $TRAP_OID $OID i 444"
+	$BASH "snmpinform $inform_debug -e $USM_EID -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -x $PRIVPROTO -X $USM_PW -l authPriv -u $USM_USER $host \"\" $TRAP_OID $OID i 444"
     fi
 }
 
@@ -643,7 +644,7 @@ function snmp_trap () {
 	    $BASH "snmptrap $trap_debug -r 3 -t 2 -T peerCert=$trapdCert -l authPriv -r 1 -v 3 $host \"\" $TRAP_OID $OID i 555"
 	else
 	    # USM
-	    $BASH "snmptrap $trap_debug -e $USM_EID -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -x AES -X $USM_PW -l authPriv -u $USM_USER $host \"\" $TRAP_OID $OID i 333"
+	    $BASH "snmptrap $trap_debug -e $USM_EID -v $SNMP_PROTOCOL -a MD5 -A $USM_PW -x $PRIVPROTO -X $USM_PW -l authPriv -u $USM_USER $host \"\" $TRAP_OID $OID i 333"
 	fi
     fi
 }
