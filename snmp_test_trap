@@ -111,7 +111,9 @@ function prepare () {
 
 PREPARE_REMOTE=$TESTDIR/prepare_remote
 function prepare_remote () {
-    #local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
+    if [ "$DEBUG" == "yes" ]; then
+	local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
+    fi
 
     if [ "$REMOTE" == "yes" ]; then
 	if [ ! -e $PREPARE_REMOTE ]; then
@@ -174,14 +176,14 @@ function create_cert ()
 	    $BASH "$NET_SNMP_CERT gencert -I -t snmpapp --cn $TSM_USER -C $CERTDIR"
 	    $BASH "$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TRAP_USER -C $CERTDIR"
 	else
-	    #$BASH "$NET_SNMP_CERT gencsr  -I -t snmpd --cn $TSM_USER --san DNS:$(hostname) -C $CERTDIR"
-	    $BASH "$NET_SNMP_CERT gencsr  -I -t snmpd --cn $TSM_USER --san email:${PRIME_EMAIL} -C $CERTDIR"
+	    $BASH "$NET_SNMP_CERT gencsr  -I -t snmpd --cn $TSM_USER --san DNS:$(hostname) -C $CERTDIR"
+	    #$BASH "$NET_SNMP_CERT gencsr  -I -t snmpd --cn $TSM_USER --san email:${PRIME_EMAIL} -C $CERTDIR"
 	    $BASH "$NET_SNMP_CERT signcsr -I --with-ca $PRIME_CA --csr snmpd -C $CERTDIR"
 
 	    $BASH "$NET_SNMP_CERT gencsr  -I -t snmpapp --cn $APP_USER -C $CERTDIR"
 	    $BASH "$NET_SNMP_CERT signcsr -I --with-ca $PRIME_CA --csr snmpapp -C $CERTDIR"
 
-	    $BASH "$NET_SNMP_CERT gencsr  -I -t snmptrapd --cn $TRAP_USER -C $CERTDIR"
+	    $BASH "$NET_SNMP_CERT gencsr  -I -t snmptrapd --cn $TRAP_USER --san DNS:$(hostname) -C $CERTDIR"
 	    $BASH "$NET_SNMP_CERT signcsr -I --with-ca $PRIME_CA --csr snmptrapd -C $CERTDIR"
 
 	    mv $CERTDIR/tls/newcerts/*.crt $CERTDIR/tls/certs/
@@ -259,9 +261,11 @@ function create_snmpd_conf ()
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	if [ "$TLS_VALIDATION" == "peer" ]; then
+	    local tls_options="-T peerCert=$trapdCert"
 	    echo "[snmp] peerCert $trapdCert" >> $conf
 	else
-	    echo "[snmp] trustCert $caCert" >> $conf
+	    local tls_options="-T trustCert=$caCert"
+	    #echo "[snmp] trustCert $caCert" >> $conf
 	fi
 	echo "[snmp] localCert $snmpdCert" >> $conf
 
@@ -269,7 +273,7 @@ function create_snmpd_conf ()
 	echo "rwuser -s tsm $TSM_USER authpriv" >> $conf
 
 	if [ "$DTLSUDP4" == "yes" ]; then
-	    echo "$TRAPSESS_TSM dtlsudp:$IPv4_DEV0:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
+	    echo "$TRAPSESS_TSM $tls_options dtlsudp:$IPv4_DEV0:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
 	fi
 	if [ "$DTLSUDP6" == "yes" ]; then
 	    echo "$TRAPSESS_TSM dtlsudp6:[$IPv6_DEV0]:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
@@ -292,11 +296,13 @@ function create_snmptrapd_conf ()
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	if [ "$TLS_VALIDATION" != "peer" ]; then
 	    echo "[snmp] trustCert $caCert" >> $conf
+	    echo "certSecName 10 $snmpdCert --dns $(hostname)" >> $conf
+	    echo "certSecName 11 $appCert --dns $(hostname)" >> $conf
+	else
+	    echo "certSecName 10 $snmpdCert --cn" >> $conf
+	    echo "certSecName 11 $appCert --cn" >> $conf
 	fi
 	echo "[snmp] localCert $trapdCert" >> $conf
-	echo "certSecName 10 $snmpdCert --cn" >> $conf
-	echo "certSecName 11 $appCert --cn" >> $conf
-#	echo "certSecName 10 $snmpdCert --rfc822 $PRIME_EMAIL" >> $conf
 	echo "authuser log -s tsm $TSM_USER authpriv" >> $conf
     fi
     echo [snmp] $LOGTIMESTAMP >> $conf
@@ -313,7 +319,7 @@ function create_snmp_conf ()
     echo "defCommunity $SNMP_COMMUNITY" >> $conf
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "localCert $appCert" >> $conf
-	echo "peerCert  $snmpdCert" >> $conf
+	#echo "peerCert  $snmpdCert" >> $conf
     fi
     echo $LOGTIMESTAMP >> $conf
 }
@@ -465,7 +471,7 @@ function configure_mib_dtlsudp()
     echo $host | grep dtlsudp >/dev/null
     if [ "$?" -eq 0 ]; then
 	# TSM
-	local SNMPSET="snmpset -v 3 $host"
+	local SNMPSET="snmpset -v 3 -T peerCert=$snmpdCert $host"
     else
 	# USM
 	local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host"
@@ -477,7 +483,7 @@ function configure_mib_dtlsudp()
     if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 3
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.$obj = 4
-	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $PRIME_EMAIL
+	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $(hostname)
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 3
     else
 	if [ $SNMP_PROTOCOL == "3" ]; then
@@ -539,7 +545,7 @@ function get_mib()
 
     echo $host | grep dtlsudp >/dev/null
     if [ "$?" -eq 0 ]; then
-	SNMPWALK="snmpbulkwalk -v 3 -r 2 -t 10 $host"
+	SNMPWALK="snmpbulkwalk -v 3 -r 2 -t 10 -T peerCert=$snmpdCert $host"
     else
 	SNMPWALK="snmpbulkwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host"
     fi
@@ -553,7 +559,7 @@ function get_mib()
     done
 
     for oid in $oids; do
-	$NOTE "Get $oid"
+	$NOTE "GET $oid"
 	grep "^${oid}" $SNMPWALK_OUT
     done
 }
@@ -567,6 +573,7 @@ function send_trap () {
     if [ $INFORM == "yes" ]; then
 	local inform="-Ci"
     fi
+    local SNMPTRAP="snmptrap $inform $trap_debug -v 3 -r 1 -t 4"
 
     $NOTE "Send TRAP $host v$SNMP_PROTOCOL"
     if [ $SNMP_PROTOCOL == "1" ]; then
@@ -577,10 +584,14 @@ function send_trap () {
 	echo $host | grep dtlsudp >/dev/null
 	if [ "$?" -eq 0 ]; then
 	    # TSM
-	    $BASH "snmptrap $inform $trap_debug -v 3 -r 0 -t 2 -T peerCert=$trapdCert -l authPriv $host \"\" $trap_oid $oid i $2"
+	    if [ "$TLS_VALIDATION" == "peer" ]; then
+		$BASH "$SNMPTRAP -T peerCert=$trapdCert -l authPriv $host \"\" $trap_oid $oid i $2"
+	    else
+		$BASH "$SNMPTRAP -T trustCert=$caCert -T their_hostname=$(hostname) -l authPriv $host \"\" $trap_oid $oid i $2"
+	    fi
 	else
 	    # USM
-	    $BASH "snmptrap $inform $trap_debug -v 3 -r 0 -t 2 -e $TRAP_EID -a MD5 -A $TRAP_PW -x $PRIVPROTO -X $TRAP_PW -l authNoPriv -u $TRAP_USER $host \"\" $trap_oid $oid i $2"
+	    $BASH "$SNMPTRAP -e $TRAP_EID -a MD5 -A $TRAP_PW -x $PRIVPROTO -X $TRAP_PW -l authNoPriv -u $TRAP_USER $host \"\" $trap_oid $oid i $2"
 	fi
     fi
 }
@@ -720,3 +731,6 @@ if [ $trap_target = remote ]; then
 fi
 
 exit $status
+
+# TODO
+- USM traps not working (inform works)
