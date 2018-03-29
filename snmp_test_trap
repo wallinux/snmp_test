@@ -54,9 +54,10 @@ NET_SNMP_CERT=net-snmp-cert
 
 APP_USER=appuser
 TSM_USER=tsmuser
-#PRIME_CA=ca.prime.com
-PRIME_CA=$(hostname)
-PRIME_EMAIL=admin@eprime.com
+EPRIME_CA=ca.eprime.com
+EPRIME_EMAIL=admin@eprime.com
+HOSTNAME=$(hostname)
+HOSTNAME=172.19.0.2
 
 TRAP_USER=trapuser
 TRAP_PW=trap1234
@@ -169,25 +170,25 @@ function prepare_config ()
 
 function create_cert ()
 {
-    local cert_config="--org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email $PRIME_EMAIL"
+    local cert_config="--org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email $EPRIME_EMAIL"
 
     $NOTE $FUNCNAME
     if [ ! -d $CERTDIR ]; then
-	$BASH "$NET_SNMP_CERT genca -I -n $PRIME_CA $cert_config --host $(hostname) -C $CERTDIR"
+	$BASH "$NET_SNMP_CERT genca -I -n $EPRIME_CA $cert_config --host $HOSTNAME -C $CERTDIR"
 
 	if [ "$TLS_VALIDATION" == "peer" ]; then
-	    $BASH "$NET_SNMP_CERT gencert -I -t snmpd --cn $TSM_USER $cert_config --san email:${PRIME_EMAIL} -C $CERTDIR"
+	    $BASH "$NET_SNMP_CERT gencert -I -t snmpd --cn $TSM_USER $cert_config --san email:${EPRIME_EMAIL} -C $CERTDIR"
 	    $BASH "$NET_SNMP_CERT gencert -I -t snmpapp --cn $APP_USER $cert_config -C $CERTDIR"
 	    $BASH "$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TRAP_USER $cert_config -C $CERTDIR"
 	else
-	    $BASH "$NET_SNMP_CERT gencsr  -I -t snmpd --cn $TSM_USER $cert_config --san DNS:$(hostname) -C $CERTDIR"
-	    $BASH "$NET_SNMP_CERT signcsr -I --with-ca $PRIME_CA --csr snmpd -C $CERTDIR"
+	    $BASH "$NET_SNMP_CERT gencsr  -I -t snmpd --cn $TSM_USER $cert_config --san DNS:$HOSTNAME -C $CERTDIR"
+	    $BASH "$NET_SNMP_CERT signcsr -I --with-ca $EPRIME_CA --csr snmpd -C $CERTDIR"
 
-	    $BASH "$NET_SNMP_CERT gencsr  -I -t snmpapp --cn $APP_USER $cert_config  --san DNS:$(hostname) -C $CERTDIR"
-	    $BASH "$NET_SNMP_CERT signcsr -I --with-ca $PRIME_CA --csr snmpapp -C $CERTDIR"
+	    $BASH "$NET_SNMP_CERT gencsr  -I -t snmpapp --cn $APP_USER $cert_config  --san DNS:$HOSTNAME -C $CERTDIR"
+	    $BASH "$NET_SNMP_CERT signcsr -I --with-ca $EPRIME_CA --csr snmpapp -C $CERTDIR"
 
-	    $BASH "$NET_SNMP_CERT gencsr  -I -t snmptrapd --cn $TRAP_USER $cert_config --san DNS:$(hostname) -C $CERTDIR"
-	    $BASH "$NET_SNMP_CERT signcsr -I --with-ca $PRIME_CA --csr snmptrapd -C $CERTDIR"
+	    $BASH "$NET_SNMP_CERT gencsr  -I -t snmptrapd --cn $TRAP_USER $cert_config --san DNS:$HOSTNAME -C $CERTDIR"
+	    $BASH "$NET_SNMP_CERT signcsr -I --with-ca $EPRIME_CA --csr snmptrapd -C $CERTDIR"
 
 	    mv $CERTDIR/tls/newcerts/*.crt $CERTDIR/tls/certs/
 	fi
@@ -198,7 +199,7 @@ function get_cert ()
 {
     $NOTE $FUNCNAME
 
-    caCert=$($NET_SNMP_CERT showca --fingerprint --brief $PRIME_CA -C $CERTDIR)
+    caCert=$($NET_SNMP_CERT showca --fingerprint --brief $EPRIME_CA -C $CERTDIR)
     snmpdCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpd -C $CERTDIR)
     appCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmpapp -C $CERTDIR)
     trapdCert=$($NET_SNMP_CERT showcert --fingerprint --brief snmptrapd -C $CERTDIR)
@@ -267,13 +268,16 @@ function create_snmpd_conf ()
 	    local tls_options="-T peerCert=$trapdCert"
 	    #echo "[snmp] peerCert $trapdCert" >> $conf
 	else
-	    local tls_options="-T trust_cert=$caCert -T their_hostname=$(hostname)"
-	    #echo "[snmp] trustCert $caCert" >> $conf
+	    local tls_options="-T trust_cert=$caCert -T their_hostname=$HOSTNAME"
+	    echo "[snmp] trustCert $caCert" >> $conf
 	fi
 	echo "[snmp] localCert $snmpdCert" >> $conf
 
 	echo "certSecName 10 $appCert --cn" >> $conf
 	echo "rwuser -s tsm $TSM_USER authpriv" >> $conf
+
+	#echo "certSecName 11 $trapdCert --cn" >> $conf
+	#echo "rwuser -s tsm $TRAP_USER authpriv" >> $conf
 
 	if [ "$DTLSUDP4" == "yes" ]; then
 	    echo "$TRAPSESS_TSM $tls_options dtlsudp:$IPv4_DEV0:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
@@ -299,7 +303,8 @@ function create_snmptrapd_conf ()
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	echo "certSecName 10 $snmpdCert --cn" >> $conf
 	echo "certSecName 11 $appCert --cn" >> $conf
-	echo "[snmp] localCert $trapdCert" >> $conf
+	echo "[snmp] trustCert $caCert" >> $conf
+	#echo "[snmp] localCert $trapdCert" >> $conf
 	echo "authuser log -s tsm $TSM_USER authpriv" >> $conf
 	echo "authuser log -s tsm $APP_USER authpriv" >> $conf
     fi
@@ -316,6 +321,7 @@ function create_snmp_conf ()
     cp $conf_in $conf
     echo "defCommunity $SNMP_COMMUNITY" >> $conf
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
+	#echo "trustCert $caCert" >> $conf
 	echo "localCert $appCert" >> $conf
 	#echo "peerCert  $snmpdCert" >> $conf
     fi
@@ -349,8 +355,8 @@ function set_servers()
 
 function snmp_start () {
     if [ "$DEBUG" == "yes" ]; then
-	local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,9:openssl:fingerprint,cert:find:params, -d"
-	#local snmptrapd_debug="-DALL -d"
+	#local snmptrapd_debug="-DAW,trap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,9:openssl:fingerprint,cert:find:params,tls,tlsbase,tls:*,tls_x509:* -d"
+	local snmptrapd_debug="-DALL -d"
 
 	local snmpd_debug="-d -Dtrap,trap:*,usm,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,snmpv3_build,netsnmp_udp6,AW,snmp_sess_add,target_sessions,netsnmp_udpbase,snmpv3,netsnmp_sockaddr_in,netsnmp_sockaddr_in6_2,snmp_api,9:cert,sslctx_client,tls_x509:verif,tlstmCertToTSNTable:save,read_config"
 	#local snmpd_debug="-DALL -d"
@@ -481,7 +487,7 @@ function configure_mib_dtlsudp()
     if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 3
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.$obj = 4
-	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $(hostname)
+	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = dns:$HOSTNAME
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 3
     else
 	if [ $SNMP_PROTOCOL == "3" ]; then
@@ -568,8 +574,8 @@ function send_trap () {
     local oid=netSnmpExampleHeartbeatRate
     if [ $DEBUG == "yes" ]; then
 	#local trap_debug="-Lf $SNMPTRAP_LOG -Dtrap,usm,tsm -d"
-	local trap_debug="-Lo -Dtrap,usm,tsm -d"
-	#local trap_debug="-Lf $SNMPTRAP_LOG -DALL -d"
+	#local trap_debug="-Lo -Dtrap,usm,tsm -d"
+	local trap_debug="-Lf $SNMPTRAP_LOG -DALL -d"
     fi
     if [ $INFORM == "yes" ]; then
 	local inform="-Ci"
@@ -589,7 +595,7 @@ function send_trap () {
 		$BASH "$SNMPTRAP -T peerCert=$trapdCert -l authPriv $host \"\" $trap_oid $oid i $2"
 	    else
 		#$BASH "$SNMPTRAP -T trust_cert=$caCert -l authPriv $host \"\" $trap_oid $oid i $2"
-		$BASH "$SNMPTRAP -T trust_cert=$caCert -T their_hostname=$(hostname) -l authPriv $host \"\" $trap_oid $oid i $2"
+		$BASH "$SNMPTRAP -T trust_cert=$caCert -T their_hostname=$HOSTNAME -l authPriv $host \"\" $trap_oid $oid i $2"
 	    fi
 	else
 	    # USM
@@ -607,6 +613,7 @@ function send_traps () {
     fi
     if [ "$DTLSUDP4" == "yes" ]; then
 	send_trap dtlsudp:$CONFIG_IPv4:$SNMPTRAPD_DTLSUDP_PORT 44
+	#send_trap dtlsudp:$HOSTNAME:$SNMPTRAPD_DTLSUDP_PORT 44
     fi
     if [ "$DTLSUDP6" == "yes" ]; then
 	send_trap dtlsudp6:[$CONFIG_IPv6]:$SNMPTRAPD_DTLSUDP_PORT 66
@@ -709,7 +716,7 @@ prepare
 set_servers
 snmp_start
 
-#configure_mib
+configure_mib
 
 send_traps
 
@@ -740,3 +747,4 @@ exit $status
 
 # TODO
 - USM traps not working (inform works)
+- Define NETSNMP_FEATURE_REMOVE_TLSTMADDR_GET_SERVERID
