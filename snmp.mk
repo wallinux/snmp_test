@@ -27,7 +27,9 @@ snmp.build_net_snmp: snmp.build # Build and install net-snmp in the snmp contain
 
 snmp.build_net_snmp.%:
 	$(TRACE)
-	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "cd net-snmp; make -i uninstall; make -i distclean; git stash; git fetch --all; git stash; git fetch --all;git co -b $* wayline/$*" || true
+	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "cd net-snmp; if [ -e Makefile ]; then make -i uninstall; make -i distclean; fi"
+	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "cd net-snmp; git stash; git fetch --all"
+	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "cd net-snmp; git rev-parse --verify $*; if [ $? = 0 ]; then git co $*; git pull; else git co -b $* wayline/$*; fi"
 	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "./build"
 	$(MAKE) snmp.commit.$(SNMP_CONTAINER) SNMP_TAG=$*
 

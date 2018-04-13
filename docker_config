@@ -2,10 +2,10 @@ export GET=yes
 export WALK=no
 export TRAP=yes
 
-export IPv4=yes
-export IPv6=yes
+export IPv4=no
+export IPv6=no
 export DTLSUDP4=yes
-export DTLSUDP6=yes
+export DTLSUDP6=no
 export TCPDUMP=no
 export REMOTE=yes
 export REMOTE_TCPDUMP=no
