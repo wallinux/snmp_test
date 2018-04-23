@@ -1,4 +1,4 @@
-#/bin/sh
+#!/bin/bash
 
 MIB=NET-SNMP-TUTORIAL-MIB::nstAgentSubagentObject.0
 PORT=161
@@ -15,6 +15,7 @@ function snmp_kill ()
 
 function prepare ()
 {
+    mkdir -p $TESTDIR
     mkdir -p $HOME/.snmp/mibs
     cp -f NET-SNMP-TUTORIAL-MIB.txt $HOME/.snmp/mibs
     export MIBS=+NET-SNMP-TUTORIAL-MIB
@@ -38,4 +39,3 @@ snmpset -v2c -c public localhost:$PORT $MIB = 5
 snmpwalk -v2c -c public localhost:$PORT $MIB
 
 ## vim: set sw=4 sts=4 et foldmethod=syntax : ##
-

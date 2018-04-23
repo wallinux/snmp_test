@@ -1,4 +1,3 @@
-
 #
 # Warning: you may need more libraries than are included here on the
 # build line.  The agent frequently needs various libraries in order
@@ -40,6 +39,12 @@ mysubagent: nstAgentSubagentObject.c
 nstAgentPluginObject.so: nstAgentPluginObject.c Makefile
 	$(CC) $(CFLAGS) $(DLFLAGS) -c -o nstAgentPluginObject.o nstAgentPluginObject.c
 	$(CC) $(CFLAGS) $(DLFLAGS) -o nstAgentPluginObject.so nstAgentPluginObject.o
+
+test1:
+	./test_mysubagent
+
+test2:
+	./test_example-demon
 
 clean:
 	rm -f $(TARGETS) $(LIBS) *.o

@@ -1,4 +1,5 @@
-#/bin/sh
+#!/bin/bash
+#set -x
 
 MIB=NET-SNMP-TUTORIAL-MIB::nstAgentSubagentObject.0
 PORT=1161
@@ -7,20 +8,21 @@ TESTDIR=/tmp/snmp/test
 SNMPD_LOG=$TESTDIR/snmpd.log
 SNMPD_AGENT_LOG=$TESTDIR/snmpd_agent.log
 
-function snmp_kill ()
+function snmp_kill
 {
     killall mysubagent &>/dev/null
     killall snmpd  &>/dev/null
 }
 
-function prepare ()
+function prepare
 {
+    mkdir -p $TESTDIR
     mkdir -p $HOME/.snmp/mibs
     cp -f NET-SNMP-TUTORIAL-MIB.txt $HOME/.snmp/mibs
     export MIBS=+NET-SNMP-TUTORIAL-MIB
 }
 
-function snmp_start ()
+function snmp_start
 {
     local snmpd_dbg="-d"
     local agent_dbg="-d -D\
