@@ -2,7 +2,7 @@
 
 SNMP_REGISTRY_SERVER	= $(DOCKER_ID_USER)
 SNMP_TAG		?= latest
-SNMP_TAGS		= master WR8 WR8_prime WR8_wip
+SNMP_TAGS		= AW_master WR8 WR8_prime WR8_wip
 SNMP_IMAGE		?= $(SNMP_REGISTRY_SERVER)/snmp:$(SNMP_TAG)
 SNMP_CONTAINER_0	= snmp_0_$(SNMP_TAG)
 SNMP_CONTAINER_1	= snmp_1_$(SNMP_TAG)
@@ -16,6 +16,8 @@ snmp.all: snmp.build_net_snmp # Build and createeverything
 snmp.build: # Build snmp image
 	$(TRACE)
 	$(CP) $(HOME)/.gitconfig snmp/
+	$(Q)sed -i '/signingkey/d' snmp/.gitconfig
+	$(Q)sed -i '/gpg/d' snmp/.gitconfig
 	$(CP) $(HOME)/.tmux.conf snmp/
 	$(DOCKER) build --pull -f snmp/Dockerfile -t "snmp" .
 	$(MKSTAMP)
@@ -29,7 +31,7 @@ snmp.build_net_snmp.%:
 	$(TRACE)
 	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "cd net-snmp; if [ -e Makefile ]; then make -i uninstall; make -i distclean; fi"
 	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "cd net-snmp; git stash; git fetch --all"
-	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "cd net-snmp; git rev-parse --verify $*; if [ $? = 0 ]; then git co $*; git pull; else git co -b $* wayline/$*; fi"
+	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "cd net-snmp; git rev-parse --verify $*; if [ $$? = 0 ]; then git co $*; git pull; else git co -b $* wayline/$*; fi"
 	$(DOCKER) exec -it $(SNMP_CONTAINER) sh -c "./build"
 	$(MAKE) snmp.commit.$(SNMP_CONTAINER) SNMP_TAG=$*
 
@@ -79,6 +81,7 @@ snmp.stop: # Stop snmp containers
 
 snmp.STOP: # Stop ALL snmp containers
 	$(Q)$(foreach tag, $(SNMP_TAGS), make -s snmp.stop SNMP_TAG=$(tag); )
+	$(MAKE) snmp.stop SNMP_IMAGE=snmp:latest
 
 snmp.stop.%:
 	$(TRACE)
@@ -91,6 +94,7 @@ snmp.rm: # Remove snmp container
 
 snmp.RM: snmp.STOP # Remove ALL snmp containers
 	$(Q)$(foreach tag, $(SNMP_TAGS), make -s snmp.rm SNMP_TAG=$(tag); )
+	$(MAKE) snmp.rm SNMP_IMAGE=snmp:latest
 
 snmp.rm.%:
 	$(TRACE)
