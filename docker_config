@@ -31,3 +31,5 @@ if [ -e /usr/sbin/tcpdump ]; then
   mv /usr/sbin/tcpdump /usr/bin/tcpdump
   hash -r
 fi
+
+alias ssh_remote='ssh $REMOTE_IPv4'

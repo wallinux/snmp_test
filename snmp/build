@@ -1,5 +1,7 @@
 #!/bin/bash
 cd /root/net-snmp
+git remote -v
+git branch
 autoreconf
 ./configure --prefix=/usr \
 		--with-persistent-directory=/var/lib/net-snmp \

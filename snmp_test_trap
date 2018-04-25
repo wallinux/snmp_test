@@ -7,7 +7,7 @@
 [ -z "$TCPDUMP" ] && TCPDUMP=no
 [ -z "$REMOTE" ] && REMOTE=yes
 [ -z "$SNMP_PROTOCOL" ] && SNMP_PROTOCOL=3
-2[ -z "$SETX" ] && SETX=""
+[ -z "$SETX" ] && SETX=""
 [ -z "$INFORM" ] && INFORM=no
 [ -z "$KILLSNMPD" ] && KILLSNMPD=yes
 [ -z "$SETUP_TRAPSESS" ] && SETUP_TRAPSESS=yes
