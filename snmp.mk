@@ -32,6 +32,7 @@ snmp.build.%: snmp.build.latest
 	$(Q)cat $(dockerfile)
 	$(DOCKER) build -f $(dockerfile) -t "snmp:$*" .
 	$(RM) $(dockerfile)
+	$(MAKE) snmp.tag SNMP_TAG=$*
 	$(MKSTAMP)
 
 snmp.build.ALL: # Build net-snmp for all images
@@ -48,7 +49,6 @@ snmp.prepare.%:
 
 snmp.create.%: network.create
 	$(TRACE)
-	$(MAKE) snmp.build.$(SNMP_TAG)
 	$(DOCKER) create -P --name=$* \
 		-h $*.eprime.com \
 		--network=$(DOCKER_NETWORK_1) \
@@ -56,7 +56,7 @@ snmp.create.%: network.create
 		-v $(SNMP_GITROOT):/root/snmp-test \
 		--privileged=true \
 		-i \
-		$(SNMP_IMAGE)
+		$(SNMP_REMOTE_IMAGE)
 	$(MAKE) snmp.prepare.$*
 	$(MKSTAMP)
 
@@ -102,13 +102,21 @@ snmp.rm: # Remove snmp container
 snmp.RM: snmp.STOP # Remove ALL snmp containers
 	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.rm SNMP_TAG=$(tag); )
 
-snmp.rmi: snmp.rm # Remove snmp image
+snmp.rmi: # Remove snmp image
 	$(TRACE)
 	$(DOCKER) rmi $(SNMP_IMAGE) || true
 	$(call rmstamp,snmp.build)
 
 snmp.RMI: # Remove ALL snmp images
 	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.rmi SNMP_TAG=$(tag); )
+	$(MAKE) snmp.rmi SNMP_TAG=latest
+
+snmp.remote.rmi: snmp.rm # Remove downloaded snmp image
+	$(TRACE)
+	$(DOCKER) rmi $(SNMP_REMOTE_IMAGE) || true
+
+snmp.remote.RMI: # Remove ALL remote snmp images
+	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.remote.rmi SNMP_TAG=$(tag); )
 	$(MAKE) snmp.rmi SNMP_TAG=latest
 
 snmp.shell.%:
@@ -144,7 +152,9 @@ snmp.PULL: # Pull ALL snmp images from registry
 
 pull:: snmp.PULL
 
-snmp.distclean: snmp.RMI network.rm
+snmp.distclean: snmp.remote.RMI snmp.RMI network.rm
+
+distclean:: snmp.distclean
 
 snmp.help:
 	$(TRACE)
