@@ -436,7 +436,7 @@ function set_servers()
 function snmp_start () {
     if [ "$DEBUG" == "yes" ]; then
 	local snmpd_debug="-Dtrap,tsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,transport,netsnmp_udp,netsnmp_udpbase,netsnmp_udp6,AW -d"
-	local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd -d"
+	local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,AW -d"
 	#local snmptrapd_debug="-DALL -d"
 	#local snmpd_debug="-DALL -d"
     fi
@@ -484,6 +484,7 @@ function snmp_get () {
     #local get_debug="-Lf $SNMPGET_LOG -Dtsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
     local get_debug="-Lf $SNMPGET_LOG -d"
     #local get_debug="-DALL -d"
+    local status=0
 
     $NOTE "GET $host v$SNMP_PROTOCOL $oid"
     if [ $SNMP_PROTOCOL == "3" ]; then
@@ -498,13 +499,17 @@ function snmp_get () {
     else
 	$BASH "snmpget -v $SNMP_PROTOCOL $host $oid"
     fi
-    get_status=$((get_status + $?))
+    status=$?
+    if [ $status != 0 ]; then
+	get_status=$((get_status+1))
+	$NOTE "FAIL status=$status"
+    fi
 }
 
 TCPDUMP_REMOTE_CAP=/tmp/tcpdump_remote.cap
 function remote_snmp_get () {
     local host=$1
-    local l_status=0
+    local status=0
     local oid=system.sysDescr.0
     local get_debug="-Lf $SNMPGET_LOG -Dtsm,tls,dtlsudp,9:dtlsudp,9:dtlsudp:* -d"
     #local get_debug="-DALL -d"
@@ -523,7 +528,7 @@ function remote_snmp_get () {
     else
 	$SSH_REMOTE "source $SNMPENV; $BASH \"snmpget -v $SNMP_PROTOCOL $host $oid\""
     fi
-    l_status=$?
+    status=$?
     if [ "$REMOTE_TCPDUMP" == "yes" ]; then
 	sleep 4
 	$SSH_REMOTE "tcpdump -T snmp -r $TCPDUMP_CAP \
@@ -532,7 +537,10 @@ function remote_snmp_get () {
 		port $SNMPTRAPD_PORT or \
 		port $SNMPTRAPD_DTLSUDP_PORT"
     fi
-    remote_get_status=$((remote_get_status + $l_status))
+    if [ $status != 0 ]; then
+	remote_get_status=$((remote_get_status+1))
+	$NOTE "FAIL status=$status"
+    fi
 }
 
 function f_get()
@@ -554,7 +562,7 @@ function f_get()
 
 function snmp_walk () {
     local host=$1
-    local l_status=0
+    local status=0
 
     $NOTE "WALK $host v$SNMP_PROTOCOL"
     if [ $SNMP_PROTOCOL == "3" ]; then
@@ -567,16 +575,18 @@ function snmp_walk () {
     else
 	$BASH "snmpbulkwalk -v $SNMP_PROTOCOL $host > $SNMPWALK_OUT"
     fi
-    l_status=$?
-    if [ $l_status -eq 0 ]; then
+    status=$?
+    if [ $status -eq 0 ]; then
 	$HEAD $SNMPWALK_OUT
+    else
+	$NOTE "FAIL status=$status"
+	walk_status=$((walk_status+1))
     fi
-    walk_status=$((walk_status + $l_status))
 }
 
 function remote_snmp_walk () {
     local host=$1
-    local l_status=0
+    local status=0
     local oid=system.sysDescr.0
 
     $NOTE "REMOTE WALK $host v$SNMP_PROTOCOL $oid"
@@ -590,12 +600,13 @@ function remote_snmp_walk () {
     else
 	$SSH_REMOTE "source $SNMPENV; $BASH \"snmpwalk -v $SNMP_PROTOCOL $host > $SNMPWALK_OUT\""
     fi
-    l_status=$?
-    if [ $l_status -eq 0 ]; then
+    status=$?
+    if [ $status -eq 0 ]; then
 	$SSH_REMOTE $HEAD $SNMPWALK_OUT
+    else
+	$NOTE "FAIL status=$status"
+	remote_walk_status=$((remote_walk_status+1))
     fi
-
-    remote_walk_status=$((remote_walk_status + $l_status))
 }
 
 function f_walk()
