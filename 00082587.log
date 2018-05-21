@@ -1,0 +1,299 @@
+awallin@arn-awallin-linux-l4:snmp-test$ ./snmp.run pull
+WR8_prime: Pulling from wallinux/snmp
+Digest: sha256:a21799f0e31e3187b3d3beb8e170876db97fd771639adbf81a82200cf7db5982
+Status: Image is up to date for wallinux/snmp:WR8_prime
+
+awallin@arn-awallin-linux-l4:snmp-test$./snmp.run start
+create snmp_network_1 and snmp_network_2
+6d771d5dcbea593f88d6a88c89b8efdf0f4efc20120019b7b6da7b9d5d1282fe
+5bed0f0c966237f0c0f01dd31972c7cb25ccf1333b759b402de691dd4e20c826
+create and start snmp_0_WR8_prime
+22eabece94166678f69cae441dc63b9b1ab168ddc476b12fb33b08d508d3709f
+snmp_0_WR8_prime
+
+Current default time zone: 'Europe/Stockholm'
+Local time is now:      Mon May 21 08:04:31 CEST 2018.
+Universal Time is now:  Mon May 21 06:04:31 UTC 2018.
+
+Cloning into 'snmp_test'...
+ * Starting OpenBSD Secure Shell server sshd                             [ OK ] 
+create and start snmp_1_WR8_prime
+f5743cf1943a5fba018875aedac6979986f83d5d30091ab37a21bed2600d888e
+snmp_1_WR8_prime
+
+Current default time zone: 'Europe/Stockholm'
+Local time is now:      Mon May 21 08:04:33 CEST 2018.
+Universal Time is now:  Mon May 21 06:04:33 UTC 2018.
+
+Cloning into 'snmp_test'...
+ * Starting OpenBSD Secure Shell server sshd                             [ OK ]
+ 
+awallin@arn-awallin-linux-l4:snmp-test$ ./snmp.run terminal
+
+
+--AW: In the terminal window
+
+root@snmp_0_WR8_prime:~# cd snmp_test
+
+root@snmp_0_WR8_prime:~/snmp_test# source docker_config 
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/root/.ssh/id_rsa.pub"
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh 'root@172.19.0.3'"
+and check to make sure that only the key(s) you wanted were added.
+
+root@snmp_0_WR8_prime:~/snmp_test# ./snmp_test_trap -h
+
+snmp_test_trap -h -c -C trap_traget
+
+ trap_target = <loopback|local|remote>
+ -c   clean: stop snmp servers and remove tmp directory before running the test
+ -C   cleanall: including generated certificates
+
+use ENV variables to configure test
+ IPv4=yes IPv6=no DTLSUDP4=yes DTLSUDP6=no TCPDUMP=no REMOTE=yes INFORM=no KILLSNMPD=yes SETUP_TRAPSESS=yes DEBUG=no TLS_VALIDATION=peer MD=sha1 ./snmp_test_trap
+root@snmp_0_WR8_prime:~/snmp_test# IPv4=yes IPv6=no DTLSUDP4=yes DTLSUDP6=no TCPDUMP=no REMOTE=yes INFORM=no KILLSNMPD=yes SETUP_TRAPSESS=yes DEBUG=no TLS_VALIDATION=peer MD=sha1 ./snmp_test_trap
+
+--- prepare_ip
+
+--- Mon May 21 08:07:20 CEST 2018 IPv4: 127.0.0.1 IPv6: 0:0:0:0:0:0:0:1
+
+--- Kill all running snmp servers
+snmpd: no process found
+snmptrapd: no process found
+
+--- prepare_config
+
+--- create_cert
++ echo Using MD=sha1
+Using MD=sha1
++ net-snmp-cert genca -I -n ca.eprime.com --org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email admin@eprime.com --host snmp_0_WR8_prime.eprime.com -C /tmp/snmp/cert
+CA Generated:
+  ca-certs/ca.eprime.com.crt
+  private/ca.eprime.com.key
++ net-snmp-cert gencert -I -t snmpd --cn tsmuser --org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email admin@eprime.com --san DNS:snmp_0_WR8_prime.eprime.com --with-ca ca.eprime.com --san email:admin@eprime.com -C /tmp/snmp/cert
+Certificate Generated:
+  certs/snmpd.crt
+  private/snmpd.key
++ net-snmp-cert gencert -I -t snmpapp --cn appuser --org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email admin@eprime.com --san DNS:snmp_0_WR8_prime.eprime.com --with-ca ca.eprime.com -C /tmp/snmp/cert
+Certificate Generated:
+  certs/snmpapp.crt
+  private/snmpapp.key
++ net-snmp-cert gencert -I -t snmptrapd --cn trapuser --org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email admin@eprime.com --san DNS:snmp_0_WR8_prime.eprime.com --with-ca ca.eprime.com -C /tmp/snmp/cert
+Certificate Generated:
+  certs/snmptrapd.crt
+  private/snmptrapd.key
+
+--- get_cert
+
+--- show_cert
+CA_CERT: 17:34:D9:88:50:C2:1E:0A:F4:CE:B0:AB:69:54:A6:B0:3D:7B:31:F6
+SNMPD_CERT: 42:18:14:73:87:DD:72:0E:78:B9:4C:95:27:A3:FB:20:CC:D0:E7:F5
+APP_CERT: 03:CC:68:75:9D:1B:94:B9:D0:47:CA:DC:92:56:90:F9:7B:4A:43:CB
+TRAPD_CERT: CC:C5:BE:EF:9E:84:36:A6:6A:6B:21:C8:90:25:45:EF:89:37:92:BE
+
+--- create_snmp_conf
+
+--- create_snmpd_conf
+
+--- create_snmptrapd_conf
+
+--- export_env
+
+--- preparing remote IP
+snmptrapd: no process found
+SIOCSIFADDR: File exists
+RTNETLINK answers: File exists
+
+--- starting remote snmptrapd
+snmptrapd: no process found
+REMOTE: snmptrapd  -C -c /tmp/snmp/test/snmptrapd.conf -Lf /tmp/snmp/test/snmptrapd.log -p /tmp/snmp/test/snmptrapd.pid udp:162 udp6:162 dtlsudp:0.0.0.0:10162 dtlsudp6:[::]:10162
+
+--- snmp_start
+snmptrapd -C -c /tmp/snmp/test/snmptrapd.conf -Lf /tmp/snmp/test/snmptrapd.log -p /tmp/snmp/test/snmptrapd.pid  udp:162 udp6:162 dtlsudp:0.0.0.0:10162 dtlsudp6:[::]:10162
+snmpd -V -a -C -c /tmp/snmp/test/snmpd.conf -Lf /tmp/snmp/test/snmpd.log -p /tmp/snmp/test/snmpd.pid  udp:0.0.0.0:161 udp6:[::]:161 dtlsudp:0.0.0.0:10161 dtlsudp6:[::]:10161
+
+--- HOST: 0.0.0.0:161 TRAPADDR: 127.0.0.1:162 (0x7f00000100a2) OBJ='mytrap_udp4'
+SNMP-TARGET-MIB::snmpTargetParamsRowStatus.'mytrap_udp4' = INTEGER: createAndWait(5)
+SNMP-TARGET-MIB::snmpTargetParamsStorageType.'mytrap_udp4' = INTEGER: nonVolatile(3)
+SNMP-TARGET-MIB::snmpTargetParamsMPModel.'mytrap_udp4' = INTEGER: 3
+SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.'mytrap_udp4' = INTEGER: 3
+SNMP-TARGET-MIB::snmpTargetParamsSecurityName.'mytrap_udp4' = STRING: trapuser
+SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.'mytrap_udp4' = INTEGER: authPriv(3)
+SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.'mytrap_udp4' = INTEGER: createAndWait(5)
+SNMP-NOTIFICATION-MIB::snmpNotifyTag.'mytrap_udp4' = STRING: mytrap_udp4
+SNMP-NOTIFICATION-MIB::snmpNotifyType.'mytrap_udp4' = INTEGER: trap(1)
+SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.'mytrap_udp4' = INTEGER: nonVolatile(3)
+SNMP-TARGET-MIB::snmpTargetAddrRowStatus.'mytrap_udp4' = INTEGER: createAndWait(5)
+SNMP-TARGET-MIB::snmpTargetAddrTimeout.'mytrap_udp4' = INTEGER: 300
+SNMP-TARGET-MIB::snmpTargetAddrRetryCount.'mytrap_udp4' = INTEGER: 0
+SNMP-TARGET-MIB::snmpTargetAddrTagList.'mytrap_udp4' = STRING: mytrap_udp4
+SNMP-TARGET-MIB::snmpTargetAddrParams.'mytrap_udp4' = STRING: mytrap_udp4
+SNMP-TARGET-MIB::snmpTargetAddrStorageType.'mytrap_udp4' = INTEGER: nonVolatile(3)
+SNMP-TARGET-MIB::snmpTargetAddrTDomain.'mytrap_udp4' = OID: SNMPv2-TM::snmpUDPDomain
+SNMP-TARGET-MIB::snmpTargetAddrTAddress.'mytrap_udp4' = Hex-STRING: 7F 00 00 01 00 A2 
+SNMP-TARGET-MIB::snmpTargetAddrRowStatus.'mytrap_udp4' = INTEGER: active(1)
+SNMP-TARGET-MIB::snmpTargetParamsRowStatus.'mytrap_udp4' = INTEGER: active(1)
+SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.'mytrap_udp4' = INTEGER: active(1)
+
+--- HOST: 0.0.0.0:161 TRAPADDR: 127.0.0.1:10162 (0x7f00000127b2) OBJ='mytrap_dtlsudp4'
+SNMP-TARGET-MIB::snmpTargetParamsRowStatus.'mytrap_dtlsudp4' = INTEGER: createAndWait(5)
+SNMP-TARGET-MIB::snmpTargetParamsStorageType.'mytrap_dtlsudp4' = INTEGER: nonVolatile(3)
+SNMP-TARGET-MIB::snmpTargetParamsMPModel.'mytrap_dtlsudp4' = INTEGER: 3
+SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.'mytrap_dtlsudp4' = INTEGER: 4
+SNMP-TARGET-MIB::snmpTargetParamsSecurityName.'mytrap_dtlsudp4' = STRING: dns:snmp_0_WR8_prime.eprime.com
+SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.'mytrap_dtlsudp4' = INTEGER: authPriv(3)
+SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.'mytrap_dtlsudp4' = INTEGER: createAndWait(5)
+SNMP-NOTIFICATION-MIB::snmpNotifyTag.'mytrap_dtlsudp4' = STRING: mytrap_dtlsudp4
+SNMP-NOTIFICATION-MIB::snmpNotifyType.'mytrap_dtlsudp4' = INTEGER: trap(1)
+SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.'mytrap_dtlsudp4' = INTEGER: nonVolatile(3)
+SNMP-TARGET-MIB::snmpTargetAddrRowStatus.'mytrap_dtlsudp4' = INTEGER: createAndWait(5)
+SNMP-TARGET-MIB::snmpTargetAddrTimeout.'mytrap_dtlsudp4' = INTEGER: 300
+SNMP-TARGET-MIB::snmpTargetAddrRetryCount.'mytrap_dtlsudp4' = INTEGER: 0
+SNMP-TARGET-MIB::snmpTargetAddrTagList.'mytrap_dtlsudp4' = STRING: mytrap_dtlsudp4
+SNMP-TARGET-MIB::snmpTargetAddrParams.'mytrap_dtlsudp4' = STRING: mytrap_dtlsudp4
+SNMP-TARGET-MIB::snmpTargetAddrStorageType.'mytrap_dtlsudp4' = INTEGER: nonVolatile(3)
+SNMP-TARGET-MIB::snmpTargetAddrTDomain.'mytrap_dtlsudp4' = OID: SNMP-TLS-TM-MIB::snmpDTLSUDPDomain
+SNMP-TARGET-MIB::snmpTargetAddrTAddress.'mytrap_dtlsudp4' = Hex-STRING: 7F 00 00 01 27 B2 
+SNMP-TARGET-MIB::snmpTargetAddrRowStatus.'mytrap_dtlsudp4' = INTEGER: active(1)
+SNMP-TARGET-MIB::snmpTargetParamsRowStatus.'mytrap_dtlsudp4' = INTEGER: active(1)
+SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.'mytrap_dtlsudp4' = INTEGER: active(1)
+
+--- get_mib 0.0.0.0:161
++ snmpbulkwalk -v 3 -r 2 -t 10 -a MD5 -A kalle123 -l authNoPriv -u usmuser 0.0.0.0:161 .
+status: 0
+
+--- GET SNMP-TARGET-MIB
+SNMP-TARGET-MIB::snmpTargetSpinLock.0 = INTEGER: 0
+SNMP-TARGET-MIB::snmpTargetAddrTDomain.'internal0' = OID: SNMPv2-TM::snmpUDPDomain
+SNMP-TARGET-MIB::snmpTargetAddrTDomain.'internal1' = OID: SNMP-TLS-TM-MIB::snmpDTLSUDPDomain
+SNMP-TARGET-MIB::snmpTargetAddrTDomain.'mytrap_dtlsudp4' = OID: SNMP-TLS-TM-MIB::snmpDTLSUDPDomain
+SNMP-TARGET-MIB::snmpTargetAddrTDomain.'mytrap_udp4' = OID: SNMPv2-TM::snmpUDPDomain
+SNMP-TARGET-MIB::snmpTargetAddrTAddress.'internal0' = Hex-STRING: AC 13 00 02 00 A2 
+SNMP-TARGET-MIB::snmpTargetAddrTAddress.'internal1' = Hex-STRING: AC 13 00 02 27 B2 
+SNMP-TARGET-MIB::snmpTargetAddrTAddress.'mytrap_dtlsudp4' = Hex-STRING: 7F 00 00 01 27 B2 
+SNMP-TARGET-MIB::snmpTargetAddrTAddress.'mytrap_udp4' = Hex-STRING: 7F 00 00 01 00 A2 
+SNMP-TARGET-MIB::snmpTargetAddrTimeout.'internal0' = INTEGER: 300
+SNMP-TARGET-MIB::snmpTargetAddrTimeout.'internal1' = INTEGER: 300
+SNMP-TARGET-MIB::snmpTargetAddrTimeout.'mytrap_dtlsudp4' = INTEGER: 300
+SNMP-TARGET-MIB::snmpTargetAddrTimeout.'mytrap_udp4' = INTEGER: 300
+SNMP-TARGET-MIB::snmpTargetAddrRetryCount.'internal0' = INTEGER: 0
+SNMP-TARGET-MIB::snmpTargetAddrRetryCount.'internal1' = INTEGER: 0
+SNMP-TARGET-MIB::snmpTargetAddrRetryCount.'mytrap_dtlsudp4' = INTEGER: 0
+SNMP-TARGET-MIB::snmpTargetAddrRetryCount.'mytrap_udp4' = INTEGER: 0
+SNMP-TARGET-MIB::snmpTargetAddrTagList.'internal0' = STRING: internal0
+SNMP-TARGET-MIB::snmpTargetAddrTagList.'internal1' = STRING: internal1
+SNMP-TARGET-MIB::snmpTargetAddrTagList.'mytrap_dtlsudp4' = STRING: mytrap_dtlsudp4
+SNMP-TARGET-MIB::snmpTargetAddrTagList.'mytrap_udp4' = STRING: mytrap_udp4
+SNMP-TARGET-MIB::snmpTargetAddrParams.'internal0' = STRING: internal0
+SNMP-TARGET-MIB::snmpTargetAddrParams.'internal1' = STRING: internal1
+SNMP-TARGET-MIB::snmpTargetAddrParams.'mytrap_dtlsudp4' = STRING: mytrap_dtlsudp4
+SNMP-TARGET-MIB::snmpTargetAddrParams.'mytrap_udp4' = STRING: mytrap_udp4
+SNMP-TARGET-MIB::snmpTargetAddrStorageType.'internal0' = INTEGER: readOnly(5)
+SNMP-TARGET-MIB::snmpTargetAddrStorageType.'internal1' = INTEGER: readOnly(5)
+SNMP-TARGET-MIB::snmpTargetAddrStorageType.'mytrap_dtlsudp4' = INTEGER: nonVolatile(3)
+SNMP-TARGET-MIB::snmpTargetAddrStorageType.'mytrap_udp4' = INTEGER: nonVolatile(3)
+SNMP-TARGET-MIB::snmpTargetAddrRowStatus.'internal0' = INTEGER: active(1)
+SNMP-TARGET-MIB::snmpTargetAddrRowStatus.'internal1' = INTEGER: active(1)
+SNMP-TARGET-MIB::snmpTargetAddrRowStatus.'mytrap_dtlsudp4' = INTEGER: active(1)
+SNMP-TARGET-MIB::snmpTargetAddrRowStatus.'mytrap_udp4' = INTEGER: active(1)
+SNMP-TARGET-MIB::snmpTargetParamsMPModel.'internal0' = INTEGER: 3
+SNMP-TARGET-MIB::snmpTargetParamsMPModel.'internal1' = INTEGER: 3
+SNMP-TARGET-MIB::snmpTargetParamsMPModel.'mytrap_dtlsudp4' = INTEGER: 3
+SNMP-TARGET-MIB::snmpTargetParamsMPModel.'mytrap_udp4' = INTEGER: 3
+SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.'internal0' = INTEGER: 3
+SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.'internal1' = INTEGER: 4
+SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.'mytrap_dtlsudp4' = INTEGER: 4
+SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.'mytrap_udp4' = INTEGER: 3
+SNMP-TARGET-MIB::snmpTargetParamsSecurityName.'internal0' = STRING: trapuser
+SNMP-TARGET-MIB::snmpTargetParamsSecurityName.'internal1' = STRING: __BOGUS__
+SNMP-TARGET-MIB::snmpTargetParamsSecurityName.'mytrap_dtlsudp4' = STRING: dns:snmp_0_WR8_prime.eprime.com
+SNMP-TARGET-MIB::snmpTargetParamsSecurityName.'mytrap_udp4' = STRING: trapuser
+SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.'internal0' = INTEGER: authNoPriv(2)
+SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.'internal1' = INTEGER: authPriv(3)
+SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.'mytrap_dtlsudp4' = INTEGER: authPriv(3)
+SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.'mytrap_udp4' = INTEGER: authPriv(3)
+SNMP-TARGET-MIB::snmpTargetParamsStorageType.'internal0' = INTEGER: readOnly(5)
+SNMP-TARGET-MIB::snmpTargetParamsStorageType.'internal1' = INTEGER: readOnly(5)
+SNMP-TARGET-MIB::snmpTargetParamsStorageType.'mytrap_dtlsudp4' = INTEGER: nonVolatile(3)
+SNMP-TARGET-MIB::snmpTargetParamsStorageType.'mytrap_udp4' = INTEGER: nonVolatile(3)
+SNMP-TARGET-MIB::snmpTargetParamsRowStatus.'internal0' = INTEGER: active(1)
+SNMP-TARGET-MIB::snmpTargetParamsRowStatus.'internal1' = INTEGER: active(1)
+SNMP-TARGET-MIB::snmpTargetParamsRowStatus.'mytrap_dtlsudp4' = INTEGER: active(1)
+SNMP-TARGET-MIB::snmpTargetParamsRowStatus.'mytrap_udp4' = INTEGER: active(1)
+SNMP-TARGET-MIB::snmpUnavailableContexts.0 = Counter32: 0
+SNMP-TARGET-MIB::snmpUnknownContexts.0 = Counter32: 0
+
+--- GET SNMP-NOTIFICATION-MIB
+SNMP-NOTIFICATION-MIB::snmpNotifyTag.'internal0' = STRING: internal0
+SNMP-NOTIFICATION-MIB::snmpNotifyTag.'internal1' = STRING: internal1
+SNMP-NOTIFICATION-MIB::snmpNotifyTag.'mytrap_dtlsudp4' = STRING: mytrap_dtlsudp4
+SNMP-NOTIFICATION-MIB::snmpNotifyTag.'mytrap_udp4' = STRING: mytrap_udp4
+SNMP-NOTIFICATION-MIB::snmpNotifyType.'internal0' = INTEGER: trap(1)
+SNMP-NOTIFICATION-MIB::snmpNotifyType.'internal1' = INTEGER: trap(1)
+SNMP-NOTIFICATION-MIB::snmpNotifyType.'mytrap_dtlsudp4' = INTEGER: trap(1)
+SNMP-NOTIFICATION-MIB::snmpNotifyType.'mytrap_udp4' = INTEGER: trap(1)
+SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.'internal0' = INTEGER: readOnly(5)
+SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.'internal1' = INTEGER: readOnly(5)
+SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.'mytrap_dtlsudp4' = INTEGER: nonVolatile(3)
+SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.'mytrap_udp4' = INTEGER: nonVolatile(3)
+SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.'internal0' = INTEGER: active(1)
+SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.'internal1' = INTEGER: active(1)
+SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.'mytrap_dtlsudp4' = INTEGER: active(1)
+SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.'mytrap_udp4' = INTEGER: active(1)
+
+--- GET SNMP-TLS-TM-MIB
+SNMP-TLS-TM-MIB::snmpTlstmSessionOpens.0 = Counter32: 1
+SNMP-TLS-TM-MIB::snmpTlstmSessionClientCloses.0 = Counter32: 0
+SNMP-TLS-TM-MIB::snmpTlstmSessionOpenErrors.0 = Counter32: 0
+SNMP-TLS-TM-MIB::snmpTlstmSessionAccepts.0 = Counter32: 0
+SNMP-TLS-TM-MIB::snmpTlstmSessionServerCloses.0 = Counter32: 0
+SNMP-TLS-TM-MIB::snmpTlstmSessionNoSessions.0 = Counter32: 0
+SNMP-TLS-TM-MIB::snmpTlstmSessionInvalidClientCertificates.0 = Counter32: 0
+SNMP-TLS-TM-MIB::snmpTlstmSessionUnknownServerCertificate.0 = Counter32: 0
+SNMP-TLS-TM-MIB::snmpTlstmSessionInvalidServerCertificates.0 = Counter32: 0
+SNMP-TLS-TM-MIB::snmpTlstmSessionInvalidCaches.0 = Counter32: 0
+SNMP-TLS-TM-MIB::snmpTlstmCertToTSNCount.0 = Gauge32: 1
+SNMP-TLS-TM-MIB::snmpTlstmCertToTSNTableLastChanged.0 = Timeticks: (0) 0:00:00.00
+SNMP-TLS-TM-MIB::snmpTlstmCertToTSNFingerprint.10 = STRING: 2:03cc68759d1b94b9d047cadc925690f97b4a43cb
+SNMP-TLS-TM-MIB::snmpTlstmCertToTSNMapType.10 = OID: SNMP-TLS-TM-MIB::snmpTlstmCertCommonName
+SNMP-TLS-TM-MIB::snmpTlstmCertToTSNData.10 = ""
+SNMP-TLS-TM-MIB::snmpTlstmCertToTSNStorageType.10 = INTEGER: permanent(4)
+SNMP-TLS-TM-MIB::snmpTlstmCertToTSNRowStatus.10 = INTEGER: active(1)
+SNMP-TLS-TM-MIB::snmpTlstmParamsCount.0 = Gauge32: 0
+SNMP-TLS-TM-MIB::snmpTlstmParamsTableLastChanged.0 = Timeticks: (0) 0:00:00.00
+SNMP-TLS-TM-MIB::snmpTlstmAddrCount.0 = Gauge32: 0
+SNMP-TLS-TM-MIB::snmpTlstmAddrTableLastChanged.0 = Timeticks: (0) 0:00:00.00
+
+--- Send TRAP 127.0.0.1:162 v3
++ snmptrap -v 3 -r 0 -t 2 -e 0x80001f8880523983647b8b0356 -a MD5 -A trap1234 -x DES -X trap1234 -l authNoPriv -u trapuser 127.0.0.1:162 '' NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatNotification netSnmpExampleHeartbeatRate i 4
+
+--- Send TRAP dtlsudp:127.0.0.1:10162 v3
++ snmptrap -v 3 -r 0 -t 2 -T peerCert=CC:C5:BE:EF:9E:84:36:A6:6A:6B:21:C8:90:25:45:EF:89:37:92:BE -l authPriv dtlsudp:127.0.0.1:10162 '' NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatNotification netSnmpExampleHeartbeatRate i 44
+
+---- LOCAL snmptrapd.log
+Created directory: /tmp/snmp/test/persist/cert_indexes
+Created directory: /tmp/snmp/test/persist/mib_indexes
+A SNMP version other than 3 was requested with (D)TLS; using 3 anyways
+A SNMP version other than 3 was requested with (D)TLS; using 3 anyways
+NET-SNMP version 5.7.3
+2018-05-21 08:07:25 snmp_0_WR8_prime.eprime.com [UDP: [172.19.0.2]:60784->[172.19.0.2]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (6) 0:00:00.06	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::coldStart	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+2018-05-21 08:07:25 DTLSUDP: unknown [DTLSUDP: unknown]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (6) 0:00:00.06	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::coldStart	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+2018-05-21 08:07:30 DTLSUDP: unknown [DTLSUDP: unknown]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (6660546) 18:30:05.46	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatNotification	NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatRate = INTEGER: 44
+2018-05-21 08:07:30 snmp_0_WR8_prime.eprime.com [UDP: [172.19.0.2]:60784->[172.19.0.2]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (517) 0:00:05.17	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-AGENT-MIB::nsNotifyShutdown	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpNotificationPrefix
+2018-05-21 08:07:30 DTLSUDP: unknown [DTLSUDP: unknown]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (517) 0:00:05.17	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-AGENT-MIB::nsNotifyShutdown	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpNotificationPrefix
+2018-05-21 08:07:30 localhost [UDP: [127.0.0.1]:60603->[127.0.0.1]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (517) 0:00:05.17	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-AGENT-MIB::nsNotifyShutdown	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpNotificationPrefix
+2018-05-21 08:07:30 DTLSUDP: unknown [DTLSUDP: unknown]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (517) 0:00:05.17	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-AGENT-MIB::nsNotifyShutdown	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpNotificationPrefix
+
+root@snmp_0_WR8_prime:~/snmp_test# 
+

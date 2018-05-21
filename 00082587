@@ -1,0 +1,10 @@
+
+From shell:
+./snmp.run pull
+./snmp.run start
+./snmp.run terminal or .snmp.shell
+
+From docker terminal/shell:
+cd snmp_test
+source docker_config
+./snmp_test_trap -h

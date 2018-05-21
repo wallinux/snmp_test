@@ -254,7 +254,6 @@ function create_snmpd_conf ()
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
 	if [ "$TLS_VALIDATION" == "peer" ]; then
 	    local tls_options="-T peerCert=$trapdCert"
-	    #echo "[snmp] peerCert $trapdCert" >> $conf
 	else
 	    local tls_options="-T trust_cert=$caCert -T their_hostname=$HOSTNAME"
 	    echo "[snmp] trustCert $caCert" >> $conf
@@ -738,5 +737,6 @@ fi
 exit $status
 
 # TODO
-- USM traps not working (inform works)
-- Define NETSNMP_FEATURE_REMOVE_TLSTMADDR_GET_SERVERID
+- USM send_traps not working (inform works)
+- TLS_VALIDATION=trust_anchor INFORM=yes SETUP_TRAPSESS=yes  # do not work. Have not been able to configure it correct!?!?
+- Try: Define NETSNMP_FEATURE_REMOVE_TLSTMADDR_GET_SERVERID
