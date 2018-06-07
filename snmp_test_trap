@@ -63,9 +63,9 @@ TRAP_USER=trapuser
 TRAP_PW=trap1234
 TRAP_EID=0x80001f8880523983647b8b0356
 
-USM_USER=usmuser
-USM_PW=kalle123
-USM_EID=0x80001f8880523983647b8b0357
+USM_CMD_USER=usm_cmduser
+USM_CMD_PW=usm_cmdpw
+USM_CMD_EID=0x80001f8880523983647b8b0357
 PRIVPROTO=DES
 
 RETRYCOUNT=0
@@ -227,9 +227,9 @@ function create_snmpd_conf ()
 #    echo "engineID $TRAP_EID" >> $conf
 #    echo "oldEngineID $TRAP_EID" >> $conf
     echo "exactEngineID $TRAP_EID" >> $conf
-    echo "createUser $USM_USER MD5 \"$USM_PW\" $PRIVPROTO \"$USM_PW\"" >> $conf
+    echo "createUser $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\"" >> $conf
     echo "createUser $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\"" >> $conf
-    echo "rwuser $USM_USER" >> $conf
+    echo "rwuser $USM_CMD_USER" >> $conf
     echo "certSecName 10 $appCert --cn" >> $conf
     echo "rwuser -s tsm $APP_USER authpriv" >> $conf
     echo "trapcommunity public" >> $conf
@@ -281,11 +281,15 @@ function create_snmptrapd_conf ()
     $NOTE $FUNCNAME
 
     cp $conf_in $conf
+    echo -e "\n# USM" >> $conf
     echo "exactEngineID $TRAP_EID" >> $conf
     echo createUser -e $TRAP_EID $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\" >> $conf
+    echo createUser -e $USM_CMD_EID $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\" >> $conf
     echo "authUser log $TRAP_USER" >> $conf
+    echo "authUser log $USM_CMD_USER" >> $conf
 
     if [ "$DTLSUDP4" == "yes" ] || [ "$DTLSUDP6" == "yes" ]; then
+	echo -e "\n# TSM" >> $conf
 	echo "certSecName 10 $snmpdCert --cn" >> $conf
 	echo "certSecName 11 $appCert --cn" >> $conf
 	echo "[snmp] trustCert $caCert" >> $conf
@@ -454,8 +458,8 @@ function configure_mib_dtlsudp()
 
     echo -e "\n--- HOST: $host TRAPADDR: $2:$3 ($targetaddr) OBJ=$obj"
 
-    #snmpusm -v 3 -u $USM_USER  -n "" -l authNoPriv -a MD5 -A $USM_PW $host create $TRAP_USER $USM_USER
-    #snmpusm -v 3 -x $PRIVPROTO -u $TRAP_USER -n "" -l authNoPriv -a MD5 -A $USM_PW $host passwd $USM_PW $TRAP_PW
+    #snmpusm -v 3 -u $USM_CMD_USER  -n "" -l authNoPriv -a MD5 -A $USM_CMD_PW $host create $TRAP_USER $USM_CMD_USER
+    #snmpusm -v 3 -x $PRIVPROTO -u $TRAP_USER -n "" -l authNoPriv -a MD5 -A $USM_CMD_PW $host passwd $USM_CMD_PW $TRAP_PW
     #snmpget -v 3 -u $TRAP_USER -n "" -l authNoPriv -a MD5 -A $TRAP_PW $host sysUpTime.0
 
     echo $host | grep dtlsudp >/dev/null
@@ -464,7 +468,7 @@ function configure_mib_dtlsudp()
 	local SNMPSET="snmpset -v 3 -T peerCert=$snmpdCert $host"
     else
 	# USM
-	local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host"
+	local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host"
     fi
 
     # snmpTargetParams
@@ -539,7 +543,7 @@ function get_mib()
     if [ "$?" -eq 0 ]; then
 	SNMPWALK="snmpbulkwalk -v 3 -r 2 -t 10 -T peerCert=$snmpdCert $host"
     else
-	SNMPWALK="snmpbulkwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_PW -l authNoPriv -u $USM_USER $host"
+	SNMPWALK="snmpbulkwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host"
     fi
 
     local status=1
@@ -587,7 +591,7 @@ function send_trap () {
 	    fi
 	else
 	    # USM
-	    $BASH "$SNMPTRAP -e $TRAP_EID -a MD5 -A $TRAP_PW -x $PRIVPROTO -X $TRAP_PW -l authNoPriv -u $TRAP_USER $host \"\" $trap_oid $oid i $2"
+	    $BASH "$SNMPTRAP -e $USM_CMD_EID -a MD5 -A $USM_CMD_PW -x $PRIVPROTO -X $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host \"\" $trap_oid $oid i $2"
 	fi
     fi
 }
