@@ -1,0 +1,221 @@
+#!/bin/bash
+
+#####################################################################
+CONFDIR=$PWD
+OUTDIR=$PWD/out
+TESTDIR=$OUTDIR/tmp
+CERTDIR=$OUTDIR/cert
+
+SNMPD_LOG=$TESTDIR/snmpd.log
+SNMPD_CONF=$CONFDIR/snmpd.conf
+SNMPD_PORT=161
+
+SNMPTRAPD_LOG=$TESTDIR/snmptrapd.log
+SNMPTRAPD_CONF=$CONFDIR/snmptrapd.conf
+SNMPTRAPD_PORT=162
+
+SNMPENV=$TESTDIR/snmpenv
+
+TRAP_USER=trapuser
+TRAP_PW=trap1234
+TRAP_EID=0x80001f8880523983647b8b0356
+
+USM_CMD_USER=usm_cmduser
+USM_CMD_PW=usm_cmdpw
+USM_CMD_EID=0x80001f8880523983647b8b0357
+
+
+NOTE='echo -e \n--- '
+
+#####################################################################
+function snmp_kill () {
+    killall snmpd 2> /dev/null
+    sleep 2
+    killall snmptrapd  2> /dev/null
+    sleep 1
+
+    rm -f $SNMPTRAPD_LOG
+    rm -f $SNMPD_LOG
+}
+
+function prepare () {
+    if [ ! -e $TESTDIR ]; then
+	mkdir -p $TESTDIR
+    fi
+
+    export_env
+}
+
+function export_env ()
+{
+    echo "export SNMP_PERSISTENT_DIR=$TESTDIR/persist" > $SNMPENV
+    echo "export SNMPCONFPATH=$TESTDIR:$CERTDIR:$SNMP_PERSISTENT_DIR" >> $SNMPENV
+    source $SNMPENV
+    mkdir -p $SNMP_PERSISTENT_DIR
+}
+
+function snmp_start () {
+    sh -x -c "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG udp:162 udp6:162"
+    sh -x -c "snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG udp:161 udp6:161"
+    sleep 3
+}
+
+function get_ipv ()
+{
+    echo $1 | grep : >/dev/null
+    if [ $? = 0 ]; then
+	# IPv6
+	printf "6"
+    else
+	# IPv4
+	printf "4"
+    fi
+}
+
+function convert_ip2hex ()
+{
+    local host=$1
+    local port=$2
+
+    printf "0x"
+    if [ $(get_ipv $host) = 6 ]; then
+	echo $host | grep :: >/dev/null
+	if [ $? = 0 ]; then
+	    no_of_colons=$(echo $host | tr -d -c ':' | awk '{ print length; }')
+	    case $no_of_colons in
+		7)
+		    host=$(echo $host | sed 's/::/:0:/')
+		    ;;
+		6)
+		    host=$(echo $host | sed 's/::/:0:0:/')
+		    ;;
+		5)
+		    host=$(echo $host | sed 's/::/:0:0:0:/')
+		    ;;
+		4)
+		    host=$(echo $host | sed 's/::/:0:0:0:0:/')
+		    ;;
+	    esac
+	fi
+	for i in $(echo $host | tr ':' ' '); do
+	    printf "%04x" $(echo $((16#$i)))
+	done
+    else
+	for i in $(echo $host | tr '.' ' '); do
+	    printf "%02x" $i
+	done
+    fi
+    printf "%04x" $port
+    printf "\n"
+}
+
+function f_snmpset ()
+{
+   snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $CONFIG_HOST $* > /dev/null
+}
+
+function configure_mib()
+{
+    local host=$1
+    local targetaddr=$(convert_ip2hex $2 $3)
+    local ipv=$(get_ipv $2)
+    local proto=udp${ipv}
+    local obj="'mytrap_${proto}'"
+    local link=mytrap_${proto}
+    local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host"
+    
+    $NOTE "HOST: $host TRAPADDR: $2:$3 ($targetaddr) OBJ=$obj"
+
+    # snmpTargetParams
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsRowStatus.$obj = 5"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsStorageType.$obj = 3"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 3"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.$obj = 3"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $TRAP_USER"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 3"
+
+    # snmpNotify
+    f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.$obj = 5"
+    f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyTag.$obj = $link"
+    # inform = 2, trap=1
+    f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyType.$obj = 1"
+    f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.$obj = 3"
+
+    # snmpTargetAddr
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetAddrRowStatus.$obj = 5"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetAddrTimeout.$obj = 300"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetAddrRetryCount.$obj = 0"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetAddrTagList.$obj = $link"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetAddrParams.$obj = $link"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetAddrStorageType.$obj = 3"
+    if [ $proto = udp4 ]; then
+	f_snmpset "SNMP-TARGET-MIB::snmpTargetAddrTDomain.$obj = SNMPv2-TM::snmpUDPDomain"
+    fi
+    if [ $proto = udp6 ]; then
+	f_snmpset "SNMP-TARGET-MIB::snmpTargetAddrTDomain.$obj = SNMPv2-SMI::mib-2.100.1.2"
+    fi
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetAddrTAddress.$obj x $targetaddr"
+
+    # enable the trap
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetAddrRowStatus.$obj = 1"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsRowStatus.$obj = 1"
+    f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.$obj = 1"
+}
+
+function get_target_address()
+{
+    $NOTE "walk SNMP-TARGET-MIB::snmpTargetAddrTAddress"
+    sh -x -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-TARGET-MIB::snmpTargetAddrTAddress"
+#    sh -x -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-TARGET-MIB::snmpTargetAddrTable"
+#    sh -x -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-TARGET-MIB::snmpTargetParamsTable"
+#    sh -x -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-NOTIFICATION-MIB::snmpNotifyTable"
+}
+
+###########################################
+# main
+
+while getopts "c" opt; do
+    case $opt in
+	c)
+	    snmp_kill
+	    rm -rf $OUTDIR
+	    ;;
+
+	*)
+	    exit 0
+	    ;;
+
+    esac
+done
+shift $((OPTIND-1))
+
+CONFIG_HOST=0.0.0.0:161
+CONFIG_IPv4=127.0.0.1
+CONFIG_IPv6=0:0:0:0:0:0:0:1
+
+snmp_kill
+prepare
+snmp_start
+
+configure_mib $CONFIG_HOST $CONFIG_IPv4 $SNMPTRAPD_PORT
+configure_mib $CONFIG_HOST $CONFIG_IPv6 $SNMPTRAPD_PORT
+
+get_target_address $CONFIG_HOST
+
+killall snmpd
+sleep 5
+
+no_of_shutdown=$(grep nsNotifyShutdown $SNMPTRAPD_LOG | wc -l)
+if [ "$no_of_shutdown" != "4" ]; then
+    $NOTE "snmptrapd.log"
+    cat $SNMPTRAPD_LOG
+
+    $NOTE "snmpd.log"
+    cat $SNMPD_LOG
+
+    $NOTE "FAILED: got $no_of_shutdown expected 4 shutdown traps"
+    exit -1
+fi
+
+$NOTE "PASSED"
+exit 0
