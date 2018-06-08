@@ -1,5 +1,7 @@
 #!/bin/bash
 
+[ -z "$INFORM" ] && INFORM=no
+
 #####################################################################
 CONFDIR=$PWD
 OUTDIR=$PWD/out
@@ -7,23 +9,28 @@ TESTDIR=$OUTDIR/tmp
 CERTDIR=$OUTDIR/cert
 
 SNMPD_LOG=$TESTDIR/snmpd.log
-SNMPD_CONF=$CONFDIR/snmpd.conf
+if [ $INFORM == "yes" ]; then
+    SNMPD_CONF=$CONFDIR/snmpd_inform.conf
+else
+    SNMPD_CONF=$CONFDIR/snmpd.conf
+fi
 SNMPD_PORT=161
 
 SNMPTRAPD_LOG=$TESTDIR/snmptrapd.log
-SNMPTRAPD_CONF=$CONFDIR/snmptrapd.conf
+if [ $INFORM == "yes" ]; then
+    SNMPTRAPD_CONF=$CONFDIR/snmptrapd_inform.conf
+else
+    SNMPTRAPD_CONF=$CONFDIR/snmptrapd.conf
+fi
 SNMPTRAPD_PORT=162
 
 SNMPENV=$TESTDIR/snmpenv
 
-TRAP_USER=trapuser
-TRAP_PW=trap1234
-TRAP_EID=0x80001f8880523983647b8b0356
+USM_SNMPD_USER=usm_snmpduser
+USM_SNMPD_PW=usm_snmppw
 
 USM_CMD_USER=usm_cmduser
 USM_CMD_PW=usm_cmdpw
-USM_CMD_EID=0x80001f8880523983647b8b0357
-
 
 NOTE='echo -e \n--- '
 
@@ -55,6 +62,7 @@ function export_env ()
 }
 
 function snmp_start () {
+    snmpd --version
     sh -x -c "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG udp:162 udp6:162"
     sh -x -c "snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG udp:161 udp6:161"
     sleep 3
@@ -131,14 +139,19 @@ function configure_mib()
     f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsStorageType.$obj = 3"
     f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 3"
     f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.$obj = 3"
-    f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $TRAP_USER"
-    f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 3"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $USM_SNMPD_USER"
+    f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 2"
 
     # snmpNotify
     f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.$obj = 5"
     f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyTag.$obj = $link"
-    # inform = 2, trap=1
-    f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyType.$obj = 1"
+    if [ $INFORM == "yes" ]; then
+	notifytype=2
+    else
+	# trap
+	notifytype=1
+    fi
+    f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyType.$obj = $notifytype"
     f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyStorageType.$obj = 3"
 
     # snmpTargetAddr
