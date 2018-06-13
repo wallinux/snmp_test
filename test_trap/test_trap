@@ -1,40 +1,41 @@
 #!/bin/bash
 
 [ -z "$INFORM" ] && INFORM=no
+[ -z "$SETUP_TRAPSESS" ] && SETUP_TRAPSESS=yes
+[ -z "$SETUP_DYNTRAP" ] && SETUP_DYNTRAP=yes
+[ -z "$IPv4" ] && IPv4=yes
+[ -z "$IPv6" ] && IPv6=yes
+[ -z "$SETX" ] && SETX=+x
 
 #####################################################################
-CONFDIR=$PWD
+
 OUTDIR=$PWD/out
 TESTDIR=$OUTDIR/tmp
+CONFDIR=$TESTDIR
 CERTDIR=$OUTDIR/cert
 
 SNMPD_LOG=$TESTDIR/snmpd.log
-if [ $INFORM == "yes" ]; then
-    SNMPD_CONF=$CONFDIR/snmpd_inform.conf
-else
-    SNMPD_CONF=$CONFDIR/snmpd.conf
-fi
+SNMPD_CONF=$CONFDIR/snmpd.conf
 SNMPD_PORT=161
 
 SNMPTRAPD_LOG=$TESTDIR/snmptrapd.log
-if [ $INFORM == "yes" ]; then
-    SNMPTRAPD_CONF=$CONFDIR/snmptrapd_inform.conf
-else
-    SNMPTRAPD_CONF=$CONFDIR/snmptrapd.conf
-fi
+SNMPTRAPD_CONF=$CONFDIR/snmptrapd.conf
 SNMPTRAPD_PORT=162
 
 SNMPENV=$TESTDIR/snmpenv
 
 USM_SNMPD_USER=usm_snmpduser
-USM_SNMPD_PW=usm_snmppw
+USM_SNMPD_PW=usm_snmpdpw
+USM_SNMPD_EID=0x80001f8880523983647b8b0356
 
 USM_CMD_USER=usm_cmduser
 USM_CMD_PW=usm_cmdpw
 
 NOTE='echo -e \n--- '
-
+echoerr() { echo "$@" 1>&2; }
 #####################################################################
+
+
 function snmp_kill () {
     killall snmpd 2> /dev/null
     sleep 2
@@ -45,12 +46,42 @@ function snmp_kill () {
     rm -f $SNMPD_LOG
 }
 
-function prepare () {
-    if [ ! -e $TESTDIR ]; then
-	mkdir -p $TESTDIR
+function create_snmpd_conf ()
+{
+    local conf=$1
+
+    $NOTE $FUNCNAME
+
+    echo "createUser $USM_CMD_USER MD5 $USM_CMD_PW" > $conf
+    echo "rwuser $USM_CMD_USER" >> $conf
+
+    if [ $INFORM = "yes" ]; then
+	local args="-Ci"
+    else
+	local args="-e $USM_SNMPD_EID"
+	echo "exactEngineID $USM_SNMPD_EID" >> $conf
+	echo "createUser -e $USM_SNMPD_EID $USM_SNMPD_USER MD5 $USM_SNMPD_PW" >> $conf
     fi
 
-    export_env
+    [ "$SETUP_TRAPSESS" = "yes" ] && [ "$IPv4" = "yes" ] && \
+	echo "trapsess -v 3 -r 0 -t 3 $args -a MD5 -u $USM_SNMPD_USER -A $USM_SNMPD_PW -l authNoPriv udp:$CONFIG_IPv4:$SNMPTRAPD_PORT" >> $conf
+    [ "$SETUP_TRAPSESS" = "yes" ] && [ "$IPv6" = "yes" ] && \
+	echo "trapsess -v 3 -r 0 -t 3 $args -a MD5 -u $USM_SNMPD_USER -A $USM_SNMPD_PW -l authNoPriv udp6:[$CONFIG_IPv6]:$SNMPTRAPD_PORT" >> $conf
+
+}
+
+function create_snmptrapd_conf ()
+{
+    local conf=$1
+
+    $NOTE $FUNCNAME
+
+    if [ "$INFORM" = "yes" ]; then
+	echo "createUser $USM_SNMPD_USER MD5 $USM_SNMPD_PW" > $conf
+    else
+	echo "createUser -e $USM_SNMPD_EID $USM_SNMPD_USER MD5 $USM_SNMPD_PW" > $conf
+    fi
+    echo "authUser log $USM_SNMPD_USER" >> $conf
 }
 
 function export_env ()
@@ -61,10 +92,20 @@ function export_env ()
     mkdir -p $SNMP_PERSISTENT_DIR
 }
 
+function prepare () {
+    if [ ! -e $TESTDIR ]; then
+	mkdir -p $TESTDIR
+    fi
+
+    create_snmpd_conf $SNMPD_CONF
+    create_snmptrapd_conf $SNMPTRAPD_CONF
+    export_env
+}
+
 function snmp_start () {
     snmpd --version
-    sh -x -c "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG udp:162 udp6:162"
-    sh -x -c "snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG udp:161 udp6:161"
+    sh $SETX -c "snmptrapd -d -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG udp:162 udp6:162"
+    sh $SETX -c "snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG udp:161 udp6:161"
     sleep 3
 }
 
@@ -102,6 +143,12 @@ function convert_ip2hex ()
 		    ;;
 		4)
 		    host=$(echo $host | sed 's/::/:0:0:0:0:/')
+		    ;;
+		3)
+		    host=$(echo $host | sed 's/::/:0:0:0:0:0:/')
+		    ;;
+		2)
+		    host=$(echo $host | sed 's/::/0:0:0:0:0:0:0:/')
 		    ;;
 	    esac
 	fi
@@ -145,7 +192,7 @@ function configure_mib()
     # snmpNotify
     f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.$obj = 5"
     f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyTag.$obj = $link"
-    if [ $INFORM == "yes" ]; then
+    if [ $INFORM = "yes" ]; then
 	notifytype=2
     else
 	# trap
@@ -178,10 +225,10 @@ function configure_mib()
 function get_target_address()
 {
     $NOTE "walk SNMP-TARGET-MIB::snmpTargetAddrTAddress"
-    sh -x -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-TARGET-MIB::snmpTargetAddrTAddress"
-#    sh -x -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-TARGET-MIB::snmpTargetAddrTable"
-#    sh -x -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-TARGET-MIB::snmpTargetParamsTable"
-#    sh -x -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-NOTIFICATION-MIB::snmpNotifyTable"
+    sh $SETX -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-TARGET-MIB::snmpTargetAddrTAddress"
+    sh $SETX -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-TARGET-MIB::snmpTargetAddrTable"
+    sh $SETX -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-TARGET-MIB::snmpTargetParamsTable"
+    sh $SETX -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-NOTIFICATION-MIB::snmpNotifyTable"
 }
 
 ###########################################
@@ -203,32 +250,53 @@ done
 shift $((OPTIND-1))
 
 CONFIG_HOST=0.0.0.0:161
+#localhost
 CONFIG_IPv4=127.0.0.1
-CONFIG_IPv6=0:0:0:0:0:0:0:1
+#CONFIG_IPv6=0:0:0:0:0:0:0:1
+CONFIG_IPv6=::1
+# local
+#CONFIG_IPv4=172.19.0.2
+#CONFIG_IPv6=2001:db8:2::2
+# remote
+#CONFIG_IPv4=172.19.0.3
+#CONFIG_IPv6=2001:db8:2::3
+
 
 snmp_kill
 prepare
 snmp_start
 
-configure_mib $CONFIG_HOST $CONFIG_IPv4 $SNMPTRAPD_PORT
-configure_mib $CONFIG_HOST $CONFIG_IPv6 $SNMPTRAPD_PORT
+[ "$SETUP_DYNTRAP"  = "yes" ] && [ $IPv4 = yes ] && configure_mib $CONFIG_HOST $CONFIG_IPv4 $SNMPTRAPD_PORT
+[ "$SETUP_DYNTRAP"  = "yes" ] && [ $IPv6 = yes ] && configure_mib $CONFIG_HOST $CONFIG_IPv6 $SNMPTRAPD_PORT
 
 get_target_address $CONFIG_HOST
 
 killall snmpd
 sleep 5
 
+if [ "$SETUP_TRAPSESS" = "yes" ]; then
+    NO_OF_TRAPS=4
+else
+    NO_OF_TRAPS=2
+fi
+
+NO_OF_TRAPS=0
+[ "$SETUP_DYNTRAP"  = "yes" ] && [ "$IPv4" = "yes" ] && ((NO_OF_TRAPS++))
+[ "$SETUP_DYNTRAP"  = "yes" ] && [ "$IPv6" = "yes" ] && ((NO_OF_TRAPS++))
+[ "$SETUP_TRAPSESS" = "yes" ] && [ "$IPv4" = "yes" ] && ((NO_OF_TRAPS++))
+[ "$SETUP_TRAPSESS" = "yes" ] && [ "$IPv6" = "yes" ] && ((NO_OF_TRAPS++))
+
 no_of_shutdown=$(grep nsNotifyShutdown $SNMPTRAPD_LOG | wc -l)
-if [ "$no_of_shutdown" != "4" ]; then
+if [ "$no_of_shutdown" != "$NO_OF_TRAPS" ]; then
     $NOTE "snmptrapd.log"
     cat $SNMPTRAPD_LOG
 
     $NOTE "snmpd.log"
     cat $SNMPD_LOG
 
-    $NOTE "FAILED: got $no_of_shutdown expected 4 shutdown traps"
+    echoerr "FAILED: got $no_of_shutdown expected $NO_OF_TRAPS shutdown traps"
     exit -1
 fi
 
-$NOTE "PASSED"
+echoerr "PASSED"
 exit 0

@@ -1,0 +1,20 @@
+#!/bin/bash
+
+dyntrap="yes no"
+trapsess="yes no"
+ipv4="yes no"
+ipv6="yes no"
+inform="yes no"
+
+for a in $dyntrap; do
+    for b in $trapsess; do
+	for c in $ipv4; do
+	    for d in $ipv6; do
+		for e in $inform; do
+		    echo "SETUP_DYNTRAP=$a SETUP_TRAPSESS=$b IPv4=$c IPv6=$d INFORM=$e"
+		    SETUP_DYNTRAP=$a SETUP_TRAPSESS=$b IPv4=$c IPv6=$d INFORM=$e ./test_trap -c > /dev/null
+		done
+	    done
+	done
+    done
+done
