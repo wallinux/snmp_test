@@ -38,7 +38,6 @@ NOTE='echo -e \n--- '
 echoerr() { echo "$@" 1>&2; }
 #####################################################################
 
-
 function snmp_kill () {
     killall snmpd 2> /dev/null
     sleep 1
@@ -49,11 +48,46 @@ function snmp_kill () {
     rm -f $SNMPD_LOG
 }
 
+function debug_on ()
+{
+    f_snmpset "NET-SNMP-AGENT-MIB::nsDebugEnabled.0 i 1"
+}
+
+function debug_off ()
+{
+    f_snmpset "NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 2"
+}
+
+function debug_token_create ()
+{
+    local token="$1"
+    f_snmpset "NET-SNMP-AGENT-MIB::nsDebugEnabled.'$token' = 5"
+}
+
+function debug_token_on ()
+{
+    local token="$1"
+    f_snmpset "NET-SNMP-AGENT-MIB::nsDebugEnabled.'$token' = 1"
+}
+
+function debug_token_off ()
+{
+    local token="$1"
+    f_snmpset "NET-SNMP-AGENT-MIB::nsDebugEnabled.'$token' = 2"
+}
+
 function create_snmpd_conf ()
 {
     local conf=$1
 
     echo "# snmpd.conf" > $conf
+    echo "[snmp] dumpPacket no" >> $conf
+    echo "[snmp] doDebugging 0" >> $conf
+    echo "[snmp] debugTokens send_notifications,snmpNotifyFilterProfileTable,snmpNotifyTable,snmpNotifyTable_data,snmpNotifyTable:unregister,trap:notifyFilterProfile:shutdown,trap:notify:shutdown,trapsess,trap,stats:notif,trap:v3user_notif_sess" >> $conf
+    echo "[snmp] debugTokens -AW" >> $conf
+    # emerg|alert|crit|err|warning|notice|info|debug
+    echo "[snmp] debugLogLevel warning" >> $conf
+
     echo "oldEngineID $USM_SNMPD_EID" >> $conf
     echo "createUser -e $USM_SNMPD_EID $USM_SNMPD_USER MD5 $USM_SNMPD_PW" >> $conf
     echo "createUser $USM_CMD_USER MD5 $USM_CMD_PW" >> $conf
@@ -98,11 +132,14 @@ function prepare () {
     export_env
 }
 
-function snmp_start () {
-    sh $SETX -c "snmptrapd $DEBUG -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG udp:162 udp6:162"
+function snmp_start ()
+{
+    #DEBUG="-d -Dsend_notifications,snmpNotifyFilterProfileTable,snmpNotifyTable,snmpNotifyTable_data,snmpNotifyTable:unregister,trap:notifyFilterProfile:shutdown,trap:notify:shutdown,-trapsess,trap,stats:notif,trap:v3user_notif_sess"
+    #DEBUG="-d -DALL,-trace"
+    sh $SETX -c "snmptrapd -Lf $SNMPTRAPD_LOG $DEBUG -C -c $SNMPTRAPD_CONF udp:162 udp6:162"
     sleep 3
-    sh $SETX -c "snmpd $DEBUG -C -c $SNMPD_CONF -Lf $SNMPD_LOG udp:161 udp6:161"
-    sleep 3
+    sh $SETX -c "snmpd -Lf $SNMPD_LOG $DEBUG -C -c $SNMPD_CONF udp:161 udp6:161"
+    sleep 5
 }
 
 function get_ipv ()
@@ -214,7 +251,9 @@ function configure_mib()
     # enable the trap
     f_snmpset "SNMP-TARGET-MIB::snmpTargetAddrRowStatus.$obj = 1"
     f_snmpset "SNMP-TARGET-MIB::snmpTargetParamsRowStatus.$obj = 1"
+    debug_on
     f_snmpset "SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.$obj = 1"
+    debug_off
 }
 
 function get_target_address()
@@ -224,6 +263,7 @@ function get_target_address()
     sh $SETX -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-TARGET-MIB::snmpTargetParamsTable >> $SNMPWALK_OUT"
     sh $SETX -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-NOTIFICATION-MIB::snmpNotifyTable >> $SNMPWALK_OUT"
     sh $SETX -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 SNMP-USER-BASED-SM-MIB::usmUserTable >> $SNMPWALK_OUT"
+    sh $SETX -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1  NET-SNMP-AGENT-MIB::nsConfigDebug >> $SNMPWALK_OUT"
     #sh $SETX -c "snmpwalk -v 3 -r 2 -t 10 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $1 . > $SNMPWALK_OUT"
 }
 
@@ -303,7 +343,7 @@ get_target_address $CONFIG_HOST
 
 # Create notification with message "life the universe and everything"
 f_snmpset ".1.3.6.1.4.1.2021.254.8.0 i 1"
-sleep 1
+sleep 2
 
 killall snmpd
 sleep 3
