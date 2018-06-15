@@ -301,6 +301,10 @@ snmp_start
 
 get_target_address $CONFIG_HOST
 
+# Create notification with message "life the universe and everything"
+f_snmpset ".1.3.6.1.4.1.2021.254.8.0 i 1"
+sleep 1
+
 killall snmpd
 sleep 3
 killall snmptrapd
@@ -317,8 +321,8 @@ NO_OF_TRAPS=0
 [ "$SETUP_TRAPSESS" = "yes" ] && [ "$IPv4" = "yes" ] && ((NO_OF_TRAPS++))
 [ "$SETUP_TRAPSESS" = "yes" ] && [ "$IPv6" = "yes" ] && ((NO_OF_TRAPS++))
 
-no_of_shutdown=$(grep nsNotifyShutdown $SNMPTRAPD_LOG | wc -l)
-if [ "$no_of_shutdown" != "$NO_OF_TRAPS" ]; then
+no_of_traps=$(grep "life the universe and everything" $SNMPTRAPD_LOG | wc -l)
+if [ "$no_of_traps" != "$NO_OF_TRAPS" ]; then
     $NOTE $SNMPTRAPD_LOG
     cat $SNMPTRAPD_LOG
 
@@ -328,7 +332,7 @@ if [ "$no_of_shutdown" != "$NO_OF_TRAPS" ]; then
     $NOTE $SNMPWALK_OUT
     cat $SNMPWALK_OUT
 
-    echoerr "FAILED: got $no_of_shutdown expected $NO_OF_TRAPS shutdown traps"
+    echoerr "FAILED: got $no_of_traps expected $NO_OF_TRAPS shutdown traps"
     exit -1
 fi
 
