@@ -1,18 +1,25 @@
 #!/bin/bash
 
-dyntrap="yes no"
 trapsess="yes no"
-ipv4="yes no"
-ipv6="yes no"
+dyntrap="yes no"
+ipv4="yes"
+ipv6="no"
 inform="yes no"
+HOSTNAME=$(hostname)
 
-for a in $dyntrap; do
-    for b in $trapsess; do
+rm -rf $HOSTNAME
+
+for a in $trapsess; do
+    for b in $dyntrap; do
 	for c in $ipv4; do
 	    for d in $ipv6; do
 		for e in $inform; do
-		    echo "SETUP_DYNTRAP=$a SETUP_TRAPSESS=$b IPv4=$c IPv6=$d INFORM=$e"
-		    SETUP_DYNTRAP=$a SETUP_TRAPSESS=$b IPv4=$c IPv6=$d INFORM=$e ./test_trap -c > /dev/null
+		    export OUTDIR=$PWD/$HOSTNAME/trapsess/$a/dyntrap/$b/ipv4/$c/inform/$e
+		    export DEBUG="-d -DALL"
+		    #export DEBUG="-d"
+		    mkdir -p $OUTDIR
+		    echo "SETUP_TRAPSESS=$a SETUP_DYNTRAP=$b IPv4=$c IPv6=$d INFORM=$e ./test_trap -c"
+		    SETUP_TRAPSESS=$a SETUP_DYNTRAP=$b IPv4=$c IPv6=$d INFORM=$e ./test_trap -c > $OUTDIR/stdout
 		done
 	    done
 	done
