@@ -1,0 +1,82 @@
+#!/bin/bash
+
+: ${OUTDIR:=$PWD/debug_out}
+
+#####################################################################
+
+TESTDIR=$OUTDIR/test
+CONFDIR=$TESTDIR
+CERTDIR=$OUTDIR/cert
+SNMPENV=$TESTDIR/snmpenv
+
+SNMPD_LOG=$TESTDIR/snmpd.log
+SNMPD_CONF=$CONFDIR/snmpd.conf
+SNMPD_PORT=161
+
+USM_CMD_USER=usm_cmduser
+USM_CMD_PW=usm_cmdpw
+
+CONFIG_HOST=0.0.0.0:161
+
+source ./debug.sh
+
+#####################################################################
+
+function snmp_kill () {
+    killall snmpd 2> /dev/null
+    sleep 1
+
+    rm -f $SNMPD_LOG
+}
+
+function create_snmpd_conf ()
+{
+    local conf=$1
+
+    echo "# snmpd.conf" > $conf
+    echo "[snmp] dumpPacket no" >> $conf
+    echo "[snmp] doDebugging 0" >> $conf
+    echo "[snmp] debugTokens \
+send_notifications,snmpNotifyFilterProfileTable,snmpNotifyTable,snmpNotifyTable_data,\
+snmpNotifyTable:unregister,trap:notifyFilterProfile:shutdown,trap:notify:shutdown,trapsess,trap,stats:notif,\
+trap:v3user_notif_sess" >> $conf
+
+    # emerg|alert|crit|err|warning|notice|info|debug
+    echo "[snmp] debugLogLevel warning" >> $conf
+
+    echo "createUser $USM_CMD_USER MD5 $USM_CMD_PW" >> $conf
+    echo "rwuser $USM_CMD_USER" >> $conf
+}
+
+function export_env ()
+{
+    echo "export SNMP_PERSISTENT_DIR=$TESTDIR/persist" > $SNMPENV
+    echo "export SNMPCONFPATH=$TESTDIR:$CERTDIR:$SNMP_PERSISTENT_DIR" >> $SNMPENV
+    source $SNMPENV
+    mkdir -p $SNMP_PERSISTENT_DIR
+}
+
+function prepare () {
+    if [ ! -e $TESTDIR ]; then
+	mkdir -p $TESTDIR
+    fi
+
+    create_snmpd_conf $SNMPD_CONF
+    export_env
+}
+
+function snmp_start ()
+{
+    snmpd -Lf $SNMPD_LOG $DEBUG -C -c $SNMPD_CONF udp:161 udp6:161
+    sleep 5
+}
+
+snmpd --version
+
+snmp_kill
+prepare
+snmp_start
+
+debug_testall
+
+exit 0
