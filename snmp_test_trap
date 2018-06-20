@@ -93,10 +93,8 @@ SSH_REMOTE="ssh $REMOTE_IPv4"
 function snmp_kill () {
     $NOTE "Kill all running snmp servers"
 
-    killall snmpd
-    sleep 2
-    killall snmptrapd
-    sleep 1
+    killall -w snmpd
+    killall -w snmptrapd
 
     rm -f $SNMPTRAPD_LOG* $SNMPTRAPD_PID
     rm -f $SNMPD_LOG $SNMPD_PID
@@ -120,7 +118,7 @@ function prepare_remote () {
     if [ "$REMOTE" == "yes" ]; then
 	if [ ! -e $PREPARE_REMOTE ]; then
 	    $NOTE "preparing remote IP"
-	    $SSH_REMOTE "killall snmptrapd"
+	    $SSH_REMOTE "killall -w snmptrapd"
 	    $SSH_REMOTE "ifconfig $REMOTE_IPDEV0 inet6 add $REMOTE_IPv6/64"
 	    $SSH_REMOTE "ip -6 route add default dev $REMOTE_IPDEV0"
 	    $SSH_REMOTE "rm -rf $TESTDIR $CERTDIR"
@@ -137,7 +135,7 @@ function prepare_remote () {
 	snmptrapd_servers+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
 
 	$NOTE "starting remote snmptrapd"
-	$SSH_REMOTE "killall snmptrapd"
+	$SSH_REMOTE "killall -w snmptrapd"
 	$SSH_REMOTE "rm -f SNMPTRAPD_LOG SNMPTRAPD_PID"
 	echo "REMOTE: snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}"
 	$SSH_REMOTE "source $SNMPENV; snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}"
@@ -721,7 +719,7 @@ if [ "$TCPDUMP" == "yes" ]; then
 fi
 
 if [ "$KILLSNMPD" == "yes" ]; then
-    killall snmpd
+    killall -w snmpd
 fi
 
 sleep $TCPDUMP_TIMEOUT
