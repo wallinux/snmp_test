@@ -56,10 +56,8 @@ source ./debug.sh
 #####################################################################
 
 function snmp_kill () {
-    killall snmpd 2> /dev/null
-    sleep 1
-    killall snmptrapd  2> /dev/null
-    sleep 1
+    killall -w snmpd 2> /dev/null
+    killall -w snmptrapd  2> /dev/null
 
     rm -f $SNMPTRAPD_LOG
     rm -f $SNMPD_LOG
@@ -331,9 +329,9 @@ debug_on
 trap_kick
 debug_off
 
-killall snmpd
+killall -w snmpd
 sleep 3
-killall snmptrapd
+killall -w snmptrapd
 
 if [ "$SETUP_TRAPSESS" = "yes" ]; then
     NO_OF_TRAPS=4
