@@ -86,20 +86,26 @@ OID=netSnmpExampleHeartbeatRate
 #TRAP_OID=SNMPv2-MIB::snmpTrapOID.0
 #OID=coldStart.0
 
-get_status=0
-trap_status=0
-walk_status=0
-remote_get_status=0
-remote_trap_status=0
-remote_walk_status=0
+get_counts=0
+trap_counts=0
+walk_counts=0
+remote_get_counts=0
+remote_trap_counts=0
+remote_walk_counts=0
+
+get_fails=0
+trap_fails=0
+walk_fails=0
+remote_get_fails=0
+remote_trap_fails=0
+remote_walk_fails=0
 
 #####################################################################
 function snmp_kill () {
     $NOTE "Kill all running snmp servers"
 
-    killall snmpd
-    killall snmptrapd
-    sleep 1
+    killall -w snmpd
+    killall -w snmptrapd
 
     rm -f $SNMPTRAPD_LOG* $SNMPTRAPD_PID
     rm -f $SNMPD_LOG $SNMPD_PID
@@ -125,7 +131,7 @@ function prepare_remote () {
     if [ "$REMOTE" == "yes" ]; then
 	if [ ! -e $PREPARE_REMOTE ]; then
 	    $NOTE "preparing remote IP"
-	    $SSH_REMOTE "killall snmptrapd"
+	    $SSH_REMOTE "killall -w snmptrapd"
 	    $SSH_REMOTE "ifconfig $REMOTE_IPDEV0 inet6 add $REMOTE_IPv6/64"
 	    $SSH_REMOTE "ip -6 route add default dev $REMOTE_IPDEV0"
 	    if [ "$EXTRA" == "yes" ]; then
@@ -146,7 +152,7 @@ function prepare_remote () {
 	snmptrapd_servers+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
 
 	$NOTE "starting remote snmptrapd"
-	$SSH_REMOTE "killall snmptrapd"
+	$SSH_REMOTE "killall -w snmptrapd"
 	$SSH_REMOTE "rm -f SNMPTRAPD_LOG SNMPTRAPD_PID"
 	echo "REMOTE: snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}"
 	$SSH_REMOTE "source $SNMPENV; snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}"
@@ -501,9 +507,10 @@ function snmp_get () {
     fi
     status=$?
     if [ $status != 0 ]; then
-	get_status=$((get_status+1))
+	get_fails=$((get_fails+1))
 	$NOTE "FAIL status=$status"
     fi
+    get_counts=$((get_counts+1))
 }
 
 TCPDUMP_REMOTE_CAP=/tmp/tcpdump_remote.cap
@@ -538,9 +545,10 @@ function remote_snmp_get () {
 		port $SNMPTRAPD_DTLSUDP_PORT"
     fi
     if [ $status != 0 ]; then
-	remote_get_status=$((remote_get_status+1))
+	remote_get_fails=$((remote_get_fails+1))
 	$NOTE "FAIL status=$status"
     fi
+    remote_get_counts=$((remote_get_counts+1))
 }
 
 function f_get()
@@ -580,8 +588,9 @@ function snmp_walk () {
 	$HEAD $SNMPWALK_OUT
     else
 	$NOTE "FAIL status=$status"
-	walk_status=$((walk_status+1))
+	walk_fails=$((walk_fails+1))
     fi
+    walk_counts=$((walk_counts+1))
 }
 
 function remote_snmp_walk () {
@@ -605,8 +614,9 @@ function remote_snmp_walk () {
 	$SSH_REMOTE $HEAD $SNMPWALK_OUT
     else
 	$NOTE "FAIL status=$status"
-	remote_walk_status=$((remote_walk_status+1))
+	remote_walk_fails=$((remote_walk_fails+1))
     fi
+    remote_walk_counts=$((remote_walk_counts+1))
 }
 
 function f_walk()
@@ -661,21 +671,20 @@ function snmp_trap () {
 }
 
 function snmp_trap_check () {
-    local l_status
-
     sleep 0.1
     if [ ! -e $SNMPTRAPD_LOG.prev ]; then
 	grep -B 1 $OID $SNMPTRAPD_LOG
     else
 	diff --changed-group-format='%<%>' --unchanged-group-format='' $SNMPTRAPD_LOG $SNMPTRAPD_LOG.prev | grep -B 1 $OID
     fi
-    trap_status=$((trap_status + $?))
+    if [ $? != 0 ]; then
+	trap_fails=$((trap_fails+1))
+    fi
     cp $SNMPTRAPD_LOG $SNMPTRAPD_LOG.prev
+    trap_counts=$((trap_counts+1))
 }
 
 function snmp_trap_remote_check () {
-    local l_status
-
     sleep 0.1
     scp -q $REMOTE_IPv4:$SNMPTRAPD_LOG $SNMPTRAPD_LOG.remote
     if [ ! -e $SNMPTRAPD_LOG.remote.prev ]; then
@@ -683,8 +692,11 @@ function snmp_trap_remote_check () {
     else
 	diff --changed-group-format='%<%>' --unchanged-group-format='' $SNMPTRAPD_LOG.remote $SNMPTRAPD_LOG.remote.prev | grep -B 1 $OID
     fi
-    remote_trap_status=$((remote_trap_status + $?))
+    if [ $? != 0 ]; then
+	remote_trap_fails=$((remote_trap_fails+1))
+    fi
     cp $SNMPTRAPD_LOG.remote $SNMPTRAPD_LOG.remote.prev
+    remote_trap_counts=$((remote_trap_counts+1))
 }
 
 function snmp_trap_ip ()
@@ -824,15 +836,15 @@ fi
 snmp_check_servers
 
 echo -e "\n Result:"
-echo "  GET_STATUS:  $get_status"
-echo "  TRAP_STATUS: $trap_status"
-echo "  WALK_STATUS: $walk_status"
-status=$((get_status + $trap_status + $walk_status))
+echo "  GET_STATUS:  $get_fails ($get_counts)"
+echo "  WALK_STATUS: $walk_fails ($walk_counts)"
+echo "  TRAP_STATUS: $trap_fails ($trap_counts)"
+status=$((get_fails + $trap_fails + $walk_fails))
 
 if [ "$REMOTE" == "yes" ]; then
-    echo "  REMOTE_GET_STATUS: $remote_get_status"
-    echo "  REMOTE_TRAP_STATUS: $remote_trap_status"
-    echo "  REMOTE_WALK_STATUS: $remote_walk_status"
-    status=$((status + $remote_get_status + $remote_trap_status + $remote_walk_status))
+    echo "  REMOTE_GET_STATUS: $remote_get_fails ($remote_get_counts)"
+    echo "  REMOTE_WALK_STATUS: $remote_walk_fails ($remote_walk_counts)"
+    echo "  REMOTE_TRAP_STATUS: $remote_trap_fails ($remote_trap_counts)"
+    status=$((status + $remote_get_fails + $remote_trap_fails + $remote_walk_fails))
 fi
 exit $status
