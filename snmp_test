@@ -112,9 +112,7 @@ function snmp_kill () {
 }
 
 function prepare () {
-    if [ ! -e $TESTDIR ]; then
-	mkdir -p $TESTDIR
-    fi
+    [ ! -e $TESTDIR ] && mkdir -p $TESTDIR
 
     prepare_ip
     prepare_config
@@ -821,17 +819,9 @@ prepare
 set_servers
 snmp_start
 
-if [ "$GET" == "yes" ]; then
-    f_get
-fi
-
-if [ "$WALK" == "yes" ]; then
-    f_walk
-fi
-
-if [ "$TRAP" == "yes" ]; then
-    f_trap
-fi
+[ "$GET" == "yes" ]  && f_get
+[ "$WALK" == "yes" ] && f_walk
+[ "$TRAP" == "yes" ] && f_trap
 
 snmp_check_servers
 
