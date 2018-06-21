@@ -333,12 +333,6 @@ killall -w snmpd
 sleep 3
 killall -w snmptrapd
 
-if [ "$SETUP_TRAPSESS" = "yes" ]; then
-    NO_OF_TRAPS=4
-else
-    NO_OF_TRAPS=2
-fi
-
 NO_OF_TRAPS=0
 [ "$SETUP_DYNTRAP"  = "yes" ] && [ "$IPv4" = "yes" ] && ((NO_OF_TRAPS++))
 [ "$SETUP_DYNTRAP"  = "yes" ] && [ "$IPv6" = "yes" ] && ((NO_OF_TRAPS++))
