@@ -9,8 +9,9 @@
 [ -z "$SNMP_PROTOCOL" ] && SNMP_PROTOCOL=3
 [ -z "$SETX" ] && SETX=""
 [ -z "$INFORM" ] && INFORM=no
-[ -z "$KILLSNMPD" ] && KILLSNMPD=yes
 [ -z "$SETUP_TRAPSESS" ] && SETUP_TRAPSESS=yes
+[ -z "$SETUP_DYNTRAP" ] && SETUP_DYNTRAP=yes
+[ -z "$SEND_TRAPS" ] && SEND_TRAPS=yes
 [ -z "$DEBUG" ] && DEBUG=no
 # TLS_VALIDATION: peer or trust_anchor
 [ -z "$TLS_VALIDATION" ] && TLS_VALIDATION=peer
@@ -79,15 +80,14 @@ IPv4_DEV0_LAST=$(echo $IPv4_DEV0 | cut -d'.' -f4)
 IPv6_HOST=::
 IPv6_LO=::1
 
-TCPDUMP_TIMEOUT=70
-if [ "$KILLSNMPD" == "yes" ]; then
-    TCPDUMP_TIMEOUT=5
-fi
+TCPDUMP_TIMEOUT=5
 
 NOTE='echo -e \n--- '
 HEAD="head -3"
 BASH="bash $SETX -c"
 SSH_REMOTE="ssh $REMOTE_IPv4"
+
+echoerr() { echo "$@" 1>&2; }
 
 #####################################################################
 function snmp_kill () {
@@ -101,9 +101,7 @@ function snmp_kill () {
 }
 
 function prepare () {
-    if [ ! -e $TESTDIR ]; then
-	mkdir -p $TESTDIR
-    fi
+    [ ! -e $TESTDIR ] && mkdir -p $TESTDIR
 
     prepare_config
     prepare_remote
@@ -207,9 +205,9 @@ function create_snmpd_conf ()
 {
     local conf_in=$1
     local conf=$2
-    if [ $INFORM == "yes" ]; then
-	inform="-Ci"
-    fi
+
+    [ $INFORM == "yes" ] && inform="-Ci"
+
     if [ "$SETUP_TRAPSESS" == "yes" ]; then
 	local TRAPSESS="trapsess $inform -v 3 -r $RETRYCOUNT -t $TIMEOUT"
     else
@@ -443,7 +441,7 @@ function convert_ip2hex ()
     printf "\n"
 }
 
-function configure_mib_dtlsudp()
+function configure_mib()
 {
     local host=$1
     local targetaddr=$(convert_ip2hex $2 $3)
@@ -595,36 +593,36 @@ function send_trap () {
 }
 
 function send_traps () {
-    if [ "$IPv4" == "yes" ]; then
-	send_trap $CONFIG_IPv4:$SNMPTRAPD_PORT 4
-    fi
-    if [ "$IPv6" == "yes" ]; then
-	send_trap udp6:[$CONFIG_IPv6]:$SNMPTRAPD_PORT 6
-    fi
-    if [ "$DTLSUDP4" == "yes" ]; then
-	send_trap dtlsudp:$CONFIG_IPv4:$SNMPTRAPD_DTLSUDP_PORT 44
-	#send_trap dtlsudp:$HOSTNAME:$SNMPTRAPD_DTLSUDP_PORT 44
-    fi
-    if [ "$DTLSUDP6" == "yes" ]; then
-	send_trap dtlsudp6:[$CONFIG_IPv6]:$SNMPTRAPD_DTLSUDP_PORT 66
-    fi
+    [ "$IPv4" == "yes" ]     && send_trap $CONFIG_IPv4:$SNMPTRAPD_PORT 4
+    [ "$IPv6" == "yes" ]     && send_trap udp6:[$CONFIG_IPv6]:$SNMPTRAPD_PORT 6
+    [ "$DTLSUDP4" == "yes" ] && send_trap dtlsudp:$CONFIG_IPv4:$SNMPTRAPD_DTLSUDP_PORT 44
+    [ "$DTLSUDP6" == "yes" ] && send_trap dtlsudp6:[$CONFIG_IPv6]:$SNMPTRAPD_DTLSUDP_PORT 66
 }
 
-function configure_mib ()
+function configure_mibs ()
 {
-    if [ "$IPv4" == "yes" ]; then
-	configure_mib_dtlsudp $CONFIG_HOST $CONFIG_IPv4 $SNMPTRAPD_PORT
-    fi
-    if [ "$IPv6" == "yes" ]; then
-	configure_mib_dtlsudp $CONFIG_HOST $CONFIG_IPv6 $SNMPTRAPD_PORT
-    fi
-    if [ "$DTLSUDP4" == "yes" ]; then
-	configure_mib_dtlsudp $CONFIG_HOST $CONFIG_IPv4 $SNMPTRAPD_DTLSUDP_PORT
-    fi
-    if [ "$DTLSUDP6" == "yes" ]; then
-	configure_mib_dtlsudp $CONFIG_HOST $CONFIG_IPv6 $SNMPTRAPD_DTLSUDP_PORT
-    fi
+    [ $IPv4 = yes ]     && configure_mib $CONFIG_HOST $CONFIG_IPv4 $SNMPTRAPD_PORT
+    [ $IPv6 = yes ]     && configure_mib $CONFIG_HOST $CONFIG_IPv6 $SNMPTRAPD_PORT
+    [ $DTLSUDP4 = yes ] && configure_mib $CONFIG_HOST $CONFIG_IPv4 $SNMPTRAPD_DTLSUDP_PORT
+    [ $DTLSUDP6 = yes ] && configure_mib $CONFIG_HOST $CONFIG_IPv6 $SNMPTRAPD_DTLSUDP_PORT
+
     get_mib $CONFIG_HOST
+}
+
+function trap_kick ()
+{
+    local host=$1
+    echo $host | grep dtlsudp >/dev/null
+    if [ "$?" -eq 0 ]; then
+	# TSM
+	local SNMPSET="snmpset -v 3 -T peerCert=$snmpdCert $host"
+    else
+	# USM
+	local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host"
+    fi
+
+    # Create notification with message "life the universe and everything"
+    $SNMPSET .1.3.6.1.4.1.2021.254.8.0 i 1 > /dev/null
 }
 
 function usage()
@@ -641,10 +639,10 @@ function usage()
     echo -n " DTLSUDP6=$DTLSUDP6"
     echo -n " TCPDUMP=$TCPDUMP"
     echo -n " REMOTE=$REMOTE"
-#    echo -n " SNMP_PROTOCOL=$SNMP_PROTOCOL"
     echo -n " INFORM=$INFORM"
-    echo -n " KILLSNMPD=$KILLSNMPD"
     echo -n " SETUP_TRAPSESS=$SETUP_TRAPSESS"
+    echo -n " SETUP_DYNTRAP=$SETUP_DYNTRAP"
+    echo -n " SEND_TRAPS=$SEND_TRAPS"
     echo -n " DEBUG=$DEBUG"
     echo -n " TLS_VALIDATION=$TLS_VALIDATION"
     echo -n " MD=$MD"
@@ -709,18 +707,16 @@ prepare
 set_servers
 snmp_start
 
-configure_mib
+[ "$SETUP_DYNTRAP" = "yes" ] && configure_mibs
 
-send_traps
+[ "$SEND_TRAPS" = "yes" ] && send_traps
 
 if [ "$TCPDUMP" == "yes" ]; then
     $NOTE capture tcpdump for traps
     tcpdump_capture any $TCPDUMP_TIMEOUT
 fi
 
-if [ "$KILLSNMPD" == "yes" ]; then
-    killall -w snmpd
-fi
+trap_kick $CONFIG_HOST
 
 sleep $TCPDUMP_TIMEOUT
 
@@ -729,14 +725,53 @@ if [ "$TCPDUMP" == "yes" ]; then
     cp $TCPDUMP_CAP .
 fi
 
-echo -e "\n---- LOCAL snmptrapd.log"
-cat $SNMPTRAPD_LOG
+## TBD ##
 if [ $trap_target = remote ]; then
     echo -e "\n---- REMOTE snmptrapd.log"
     scp $REMOTE_IPv4:$SNMPTRAPD_LOG /dev/stdout
 fi
 
-exit $status
+status=0
+NO_OF_TRAPS=0
+[ "$SETUP_DYNTRAP" = "yes" ]  && [ "$IPv4" = "yes" ]     && ((NO_OF_TRAPS++))
+[ "$SETUP_DYNTRAP" = "yes" ]  && [ "$IPv6" = "yes" ]     && ((NO_OF_TRAPS++))
+[ "$SETUP_DYNTRAP" = "yes" ]  && [ "$DTLSUDP4" = "yes" ] && ((NO_OF_TRAPS++))
+[ "$SETUP_DYNTRAP" = "yes" ]  && [ "$DTLSUDP6" = "yes" ] && ((NO_OF_TRAPS++))
+[ "$SETUP_TRAPSESS" = "yes" ] && [ "$IPv4" = "yes" ]     && ((NO_OF_TRAPS++))
+[ "$SETUP_TRAPSESS" = "yes" ] && [ "$IPv6" = "yes" ]     && ((NO_OF_TRAPS++))
+[ "$SETUP_TRAPSESS" = "yes" ] && [ "$DTLSUDP4" = "yes" ] && ((NO_OF_TRAPS++))
+[ "$SETUP_TRAPSESS" = "yes" ] && [ "$DTLSUDP6" = "yes" ] && ((NO_OF_TRAPS++))
+no_of_traps=$(grep "life the universe and everything" $SNMPTRAPD_LOG | wc -l)
+if [ "$no_of_traps" != "$NO_OF_TRAPS" ]; then
+    echoerr " FAILED: got $no_of_traps expected $NO_OF_TRAPS snmpd traps"
+    status=-1
+else
+    echoerr " PASSED: got $no_of_traps of snmpd traps"
+fi
+
+NO_OF_CMDTRAPS=0
+[ "$SEND_TRAPS" = "yes" ]  && [ "$IPv4" = "yes" ]     && ((NO_OF_CMDTRAPS++))
+[ "$SEND_TRAPS" = "yes" ]  && [ "$IPv6" = "yes" ]     && ((NO_OF_CMDTRAPS++))
+[ "$SEND_TRAPS" = "yes" ]  && [ "$DTLSUDP4" = "yes" ] && ((NO_OF_CMDTRAPS++))
+[ "$SEND_TRAPS" = "yes" ]  && [ "$DTLSUDP6" = "yes" ] && ((NO_OF_CMDTRAPS++))
+no_of_cmdtraps=$(grep "netSnmpExampleHeartbeatRate" $SNMPTRAPD_LOG | wc -l)
+if [ "$no_of_cmdtraps" != "$NO_OF_CMDTRAPS" ]; then
+    echoerr " FAILED: got $no_of_cmdtraps expected $NO_OF_CMDTRAPS cmd traps"
+    status=-1
+else
+    echoerr " PASSED: got $no_of_cmdtraps of cmd traps"
+fi
+
+if [ $status != 0 ]; then
+    $NOTE $SNMPTRAPD_LOG
+    cat $SNMPTRAPD_LOG
+
+    $NOTE $SNMPD_LOG
+    cat $SNMPD_LOG
+    exit $status
+fi
+
+exit 0
 
 # TODO
 - USM send_traps not working (inform works)
