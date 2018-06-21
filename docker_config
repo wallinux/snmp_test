@@ -9,7 +9,7 @@ export DTLSUDP6=no
 export TCPDUMP=no
 export REMOTE=yes
 export REMOTE_TCPDUMP=no
-export SETX="-x"
+#export SETX="-x"
 export EXTRA="no"
 
 if [ $# = 0 ]; then
