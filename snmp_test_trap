@@ -423,6 +423,17 @@ function convert_ip2hex ()
 		4)
 		    host=$(echo $host | sed 's/::/:0:0:0:0:/')
 		    ;;
+		3)
+		    host=$(echo $host | sed 's/::/:0:0:0:0:0:/')
+		    ;;
+		2)
+		    echo $host | grep "^::" > /dev/null
+		    if [ $? = 0 ]; then
+			host=$(echo $host | sed 's/::/0:0:0:0:0:0:0:/')
+		    else
+			host=$(echo $host | sed 's/::/:0:0:0:0:0:0:/')
+		    fi
+		    ;;
 	    esac
 	fi
 	for i in $(echo $host | tr ':' ' '); do
@@ -433,8 +444,7 @@ function convert_ip2hex ()
 	    printf "%02x" $i
 	done
     fi
-    printf "%04x" $port
-    printf "\n"
+    printf "%04x\n" $port
 }
 
 function configure_mib()
