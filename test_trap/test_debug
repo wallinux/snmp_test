@@ -24,7 +24,6 @@ source ./debug.sh
 
 function snmp_kill () {
     killall -w snmpd 2> /dev/null
-
     rm -f $SNMPD_LOG
 }
 
@@ -33,10 +32,11 @@ function create_snmpd_conf ()
     local conf=$1
 
     echo "# snmpd.conf" > $conf
+    echo "[snmp] logTimestamp 1" >> $conf
     echo "[snmp] dumpPacket no" >> $conf
     echo "[snmp] doDebugging 0" >> $conf
-    echo "[snmp] debugTokens -trace" >> $conf
-    echo "[snmp] debugTokens callback" >> $conf
+    echo "[snmp] debugTokens trace" >> $conf
+    echo "[snmp] debugTokens -callback" >> $conf
 
     # emerg|alert|crit|err|warning|notice|info|debug
     echo "[snmp] debugLogLevel warning" >> $conf
@@ -68,6 +68,88 @@ function snmp_start ()
     sleep 3
 }
 
+##############################################################################
+function debug_test ()
+{
+    $TRACE $FUNCNAME ---
+    debug_on
+    debug_status
+    debug_off
+    debug_status
+}
+
+function tokenall_test ()
+{
+    $TRACE $FUNCNAME ---
+    tokenall_on
+    tokenall_status
+    debug_status
+    tokenall_off
+    tokenall_status
+    debug_status
+}
+
+function debugall_test ()
+{
+    $TRACE $FUNCNAME ---
+    debugall_on
+    debugall_status
+    debugall_off
+    debugall_status
+}
+
+function token_test ()
+{
+    $TRACE $FUNCNAME $token ---
+    debug_list
+    show_snmpd_log
+    token_create $1
+    token_status $1
+    token_off $1
+    token_status $1
+    debug_list
+    debug_on
+    token_on $1
+    token_status $1
+    debug_list
+    show_snmpd_log
+    token_destroy $1
+    debug_list
+    show_snmpd_log
+    sleep 1
+    show_snmpd_log
+
+}
+
+function pdu_test ()
+{
+    $TRACE $FUNCNAME ---
+    pdu_on
+    pdu_status
+    pdu_off
+    pdu_status
+}
+
+function debug_testall ()
+{
+    $TRACE $FUNCNAME ---
+    pdu_test
+    debug_test
+    tokenall_test
+    debugall_test
+    token_test AW
+    debug_list
+    log_list
+}
+
+function show_snmpd_log ()
+{
+    $TRACE TAIL of log - $SNMPD_LOG
+    tail -10 $SNMPD_LOG
+    $TRACE END of log
+}
+
+##############################################################################
 snmpd --version
 
 snmp_kill

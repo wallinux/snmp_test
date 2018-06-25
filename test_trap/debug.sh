@@ -28,15 +28,6 @@ function debug_status ()
     $DEBUG_SNMPGET NET-SNMP-AGENT-MIB::nsDebugEnabled.0
 }
 
-function debug_test ()
-{
-    $TRACE $FUNCNAME ---
-    debug_on
-    debug_status
-    debug_off
-    debug_status
-}
-
 ##############################################################################
 function tokenall_on ()
 {
@@ -54,17 +45,6 @@ function tokenall_status ()
 {
     $TRACE $FUNCNAME
     $DEBUG_SNMPGET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0
-}
-
-function tokenall_test ()
-{
-    $TRACE $FUNCNAME ---
-    tokenall_on
-    tokenall_status
-    debug_status
-    tokenall_off
-    tokenall_status
-    debug_status
 }
 
 ##############################################################################
@@ -89,17 +69,8 @@ function debugall_status ()
     debug_status
 }
 
-function debugall_test ()
-{
-    $TRACE $FUNCNAME ---
-    debugall_on
-    debugall_status
-    debugall_off
-    debugall_status
-}
-
 ##############################################################################
-function debug_token_create ()
+function token_create ()
 {
     local token=$1
 
@@ -107,7 +78,7 @@ function debug_token_create ()
     $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'" = 5
 }
 
-function debug_token_destroy ()
+function token_destroy ()
 {
     local token=$1
 
@@ -115,7 +86,7 @@ function debug_token_destroy ()
     $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'" = 6
 }
 
-function debug_token_on ()
+function token_on ()
 {
     local token=$1
 
@@ -123,7 +94,7 @@ function debug_token_on ()
     $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'" = 1 > $DEBUG_OUT
 }
 
-function debug_token_off ()
+function token_off ()
 {
     local token=$1
 
@@ -131,7 +102,7 @@ function debug_token_off ()
     $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'" = 2 > $DEBUG_OUT
 }
 
-function debug_token_status ()
+function token_status ()
 {
     local token=$1
 
@@ -139,30 +110,6 @@ function debug_token_status ()
     $DEBUG_SNMPGET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'"
 }
 
-function debug_token_test ()
-{
-    $TRACE $FUNCNAME $token ---
-    debug_list
-    debug_token_create $1
-    debug_token_status $1
-    debug_token_off $1
-    debug_token_status $1
-    debug_list
-    debug_token_on $1
-    debug_token_status $1
-    debug_token_destroy $1
-    debug_list
-}
-
-##############################################################################
-function debug_list ()
-{
-    $TRACE $FUNCNAME
-    echo \<LIST----------------------------------------------
-    $DEBUG_SNMPWALK "NET-SNMP-AGENT-MIB::nsConfigDebug"
-    echo ----------------------------------------------LIST\>
-    #$DEBUG_SNMPWALK "NET-SNMP-AGENT-MIB::nsLoggingTable"
-}
 
 ##############################################################################
 function pdu_on ()
@@ -183,36 +130,24 @@ function pdu_status ()
     $DEBUG_SNMPGET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0
 }
 
-function pdu_test ()
+##############################################################################
+function debug_list ()
 {
-    $TRACE $FUNCNAME ---
-    pdu_on
-    pdu_status
-    pdu_off
-    pdu_status
+    $TRACE $FUNCNAME
+    echo \<----------------------------------------------
+    $DEBUG_SNMPWALK "NET-SNMP-AGENT-MIB::nsConfigDebug"
+    echo ----------------------------------------------\>
+    #$DEBUG_SNMPWALK "NET-SNMP-AGENT-MIB::nsLoggingTable"
 }
 
-##############################################################################
-function debug_testall ()
+function log_list ()
 {
-    $TRACE $FUNCNAME ---
-    pdu_test
-    debug_test
-    tokenall_test
-    debugall_test
-    debug_token_test AW
-    debug_list
-    log_list
+    $TRACE $FUNCNAME
+    echo \<----------------------------------------------
+    $DEBUG_SNMPWALK "NET-SNMP-AGENT-MIB::nsLoggingTable"
+    echo ----------------------------------------------\>
 }
 
 ##############################################################################
 # TODO
 # handle logging level
-
-function log_list ()
-{
-    $TRACE $FUNCNAME
-    echo \<LIST----------------------------------------------
-    $DEBUG_SNMPWALK "NET-SNMP-AGENT-MIB::nsLoggingTable"
-    echo ----------------------------------------------LIST\>
-}
