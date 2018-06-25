@@ -147,7 +147,3 @@ function log_list ()
     $DEBUG_SNMPWALK "NET-SNMP-AGENT-MIB::nsLoggingTable"
     echo ----------------------------------------------\>
 }
-
-##############################################################################
-# TODO
-# handle logging level

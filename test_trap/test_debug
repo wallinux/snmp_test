@@ -34,9 +34,9 @@ function create_snmpd_conf ()
     echo "# snmpd.conf" > $conf
     echo "[snmp] logTimestamp 1" >> $conf
     echo "[snmp] dumpPacket no" >> $conf
-    echo "[snmp] doDebugging 0" >> $conf
     echo "[snmp] debugTokens trace" >> $conf
     echo "[snmp] debugTokens -callback" >> $conf
+    echo "[snmp] doDebugging 0" >> $conf
 
     # emerg|alert|crit|err|warning|notice|info|debug
     echo "[snmp] debugLogLevel warning" >> $conf
@@ -69,6 +69,13 @@ function snmp_start ()
 }
 
 ##############################################################################
+function show_snmpd_log ()
+{
+    $TRACE TAIL of log - $SNMPD_LOG
+    tail -10 $SNMPD_LOG
+    $TRACE END of log
+}
+
 function debug_test ()
 {
     $TRACE $FUNCNAME ---
@@ -142,11 +149,11 @@ function debug_testall ()
     log_list
 }
 
-function show_snmpd_log ()
+function log_test ()
 {
-    $TRACE TAIL of log - $SNMPD_LOG
-    tail -10 $SNMPD_LOG
-    $TRACE END of log
+    $TRACE $FUNCNAME ---
+    log_list
+    show_snmpd_log
 }
 
 ##############################################################################
