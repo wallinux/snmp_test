@@ -228,9 +228,7 @@ function create_snmpd_conf ()
 
     cp $conf_in $conf
 
-#    echo "engineID $TRAP_EID" >> $conf
-#    echo "oldEngineID $TRAP_EID" >> $conf
-    echo "exactEngineID $TRAP_EID" >> $conf
+    echo "oldEngineID $TRAP_EID" >> $conf
     echo "createUser $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\"" >> $conf
     echo "createUser $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\"" >> $conf
     echo "rwuser $USM_CMD_USER" >> $conf
@@ -274,7 +272,7 @@ function create_snmptrapd_conf ()
 
     cp $conf_in $conf
     echo -e "\n# USM" >> $conf
-    echo "exactEngineID $TRAP_EID" >> $conf
+    echo "oldEngineID $TRAP_EID" >> $conf
     echo createUser -e $TRAP_EID $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\" >> $conf
     echo createUser -e $USM_CMD_EID $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\" >> $conf
     echo "authUser log $TRAP_USER" >> $conf
@@ -564,17 +562,14 @@ function send_trap () {
 	#local trap_debug="-Lo -Dtrap,usm,tsm -d"
 	local trap_debug="-Lf $SNMPTRAP_LOG -DALL -d"
     fi
-    if [ $INFORM = "yes" ]; then
-	local inform="-Ci"
-    fi
+    [ $INFORM = "yes" ] && inform="-Ci"
     local SNMPTRAP="snmptrap $inform $trap_debug -v 3 -r 0 -t 2"
 
     $NOTE "Send TRAP $host v$SNMP_PROTOCOL"
-    if [ $SNMP_PROTOCOL = "1" ]; then
-	$BASH "snmptrap $trap_debug -v $SNMP_PROTOCOL $host $trap_oid \"\"  6 17 \"\"  $oid i $1"
-    elif [ $SNMP_PROTOCOL = "2c" ]; then
-	$BASH "snmptrap $trap_debug -v $SNMP_PROTOCOL $host \"\" $trap_oid $oid i $2"
-    elif [ $SNMP_PROTOCOL = "3" ]; then
+    [ $SNMP_PROTOCOL = "1"  ] && $BASH "snmptrap $trap_debug -v $SNMP_PROTOCOL $host $trap_oid \"\"  6 17 \"\"  $oid i $1"
+    [ $SNMP_PROTOCOL = "2c" ] && $BASH "snmptrap $trap_debug -v $SNMP_PROTOCOL $host \"\" $trap_oid $oid i $2"
+
+    if [ $SNMP_PROTOCOL = "3" ]; then
 	echo $host | grep dtlsudp >/dev/null
 	if [ "$?" -eq 0 ]; then
 	    # TSM
