@@ -82,7 +82,7 @@ IPv4_DEV0_LAST=$(echo $IPv4_DEV0 | cut -d'.' -f4)
 IPv6_HOST=::
 IPv6_LO=::1
 
-TCPDUMP_TIMEOUT=5
+TCPDUMP_TIMEOUT=3
 
 NOTE='echo -e --- '
 HEAD="head -3"
@@ -122,9 +122,9 @@ function prepare_remote () {
     if [ "$REMOTE" = "yes" ]; then
 	if [ ! -e $PREPARE_REMOTE ]; then
 	    $TRACE "preparing remote IP"
-	    $SSH_REMOTE "killall -w snmptrapd"
-	    $SSH_REMOTE "ifconfig $REMOTE_IPDEV0 inet6 add $REMOTE_IPv6/64"
-	    $SSH_REMOTE "ip -6 route add default dev $REMOTE_IPDEV0"
+	    $SSH_REMOTE "killall -w snmptrapd &> /dev/null"
+	    $SSH_REMOTE "ifconfig $REMOTE_IPDEV0 inet6 add $REMOTE_IPv6/64  &> /dev/null"
+	    $SSH_REMOTE "ip -6 route add default dev $REMOTE_IPDEV0 &> /dev/null"
 	    $SSH_REMOTE "rm -rf $TESTDIR $CERTDIR"
 	    $SSH_REMOTE "mkdir -p $TESTDIR $CERTDIR $SNMP_PERSISTENT_DIR"
 	    rsync -az $TESTDIR/ $REMOTE_IPv4:$TESTDIR
@@ -139,7 +139,7 @@ function prepare_remote () {
 	snmptrapd_servers+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
 
 	$TRACE "starting remote snmptrapd"
-	$SSH_REMOTE "killall -w snmptrapd"
+	$SSH_REMOTE "killall -w snmptrapd &> /dev/null"
 	$SSH_REMOTE "rm -f SNMPTRAPD_LOG SNMPTRAPD_PID"
 	echo "REMOTE: snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}"
 	$SSH_REMOTE "source $SNMPENV; snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}"
@@ -244,7 +244,7 @@ function create_snmpd_conf ()
 	[ "$IPv6" = "yes" ] && echo "trap2sink udp6:[$host_ipv6]:$SNMPTRAPD_PORT" >> $conf
     else # $SNMP_PROTOCOL = "3"
 	[ "$IPv4" = "yes" ] && echo "$TRAPSESS_USM udp:$host_ipv4:$SNMPTRAPD_PORT" >> $conf
-	[ "$IPv4" = "yes" ] && echo "$TRAPSESS_USM udp6:[$host_ipv6]:$SNMPTRAPD_PORT" >> $conf
+	[ "$IPv6" = "yes" ] && echo "$TRAPSESS_USM udp6:[$host_ipv6]:$SNMPTRAPD_PORT" >> $conf
 
 	if [ "$DTLSUDP4" = "yes" ] || [ "$DTLSUDP6" = "yes" ]; then
 	    if [ "$TLS_VALIDATION" = "peer" ]; then
@@ -637,7 +637,6 @@ function usage()
     echo -n " DTLSUDP4=$DTLSUDP4"
     echo -n " DTLSUDP6=$DTLSUDP6"
 #    echo -n " TCPDUMP=$TCPDUMP"
-    echo -n " REMOTE=$REMOTE"
     echo -n " INFORM=$INFORM"
     echo -n " SETUP_TRAPSESS=$SETUP_TRAPSESS"
     echo -n " SETUP_DYNTRAP=$SETUP_DYNTRAP"
@@ -734,17 +733,19 @@ else
     echoerr " PASSED: got $no_of_traps of snmpd traps"
 fi
 
-NO_OF_CMDTRAPS=0
-[ "$SEND_TRAPS" = "yes" ]  && [ "$IPv4" = "yes" ]     && ((NO_OF_CMDTRAPS++))
-[ "$SEND_TRAPS" = "yes" ]  && [ "$IPv6" = "yes" ]     && ((NO_OF_CMDTRAPS++))
-[ "$SEND_TRAPS" = "yes" ]  && [ "$DTLSUDP4" = "yes" ] && ((NO_OF_CMDTRAPS++))
-[ "$SEND_TRAPS" = "yes" ]  && [ "$DTLSUDP6" = "yes" ] && ((NO_OF_CMDTRAPS++))
-no_of_cmdtraps=$(grep "netSnmpExampleHeartbeatRate" $SNMPTRAPD_LOG | wc -l)
-if [ "$no_of_cmdtraps" != "$NO_OF_CMDTRAPS" ]; then
-    echoerr " FAILED: got $no_of_cmdtraps expected $NO_OF_CMDTRAPS cmd traps"
-    status=-1
-else
-    echoerr " PASSED: got $no_of_cmdtraps of cmd traps"
+if [ "$SEND_TRAPS" = "yes" ]; then
+    NO_OF_CMDTRAPS=0
+    [ "$IPv4" = "yes" ]     && ((NO_OF_CMDTRAPS++))
+    [ "$IPv6" = "yes" ]     && ((NO_OF_CMDTRAPS++))
+    [ "$DTLSUDP4" = "yes" ] && ((NO_OF_CMDTRAPS++))
+    [ "$DTLSUDP6" = "yes" ] && ((NO_OF_CMDTRAPS++))
+    no_of_cmdtraps=$(grep "netSnmpExampleHeartbeatRate" $SNMPTRAPD_LOG | wc -l)
+    if [ "$no_of_cmdtraps" != "$NO_OF_CMDTRAPS" ]; then
+	echoerr " FAILED: got $no_of_cmdtraps expected $NO_OF_CMDTRAPS cmd traps"
+	status=-1
+    else
+	echoerr " PASSED: got $no_of_cmdtraps of cmd traps"
+    fi
 fi
 
 if [ $status != 0 ]; then
