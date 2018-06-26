@@ -50,21 +50,18 @@ function tokenall_status ()
 ##############################################################################
 function debugall_on ()
 {
-    $TRACE $FUNCNAME
     tokenall_on
     debug_on
 }
 
 function debugall_off ()
 {
-    $TRACE $FUNCNAME
     tokenall_off
     debug_off
 }
 
 function debugall_status ()
 {
-    $TRACE $FUNCNAME
     tokenall_status
     debug_status
 }

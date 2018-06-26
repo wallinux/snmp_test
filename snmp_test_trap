@@ -94,6 +94,8 @@ CONFIG_HOST=$IPv4_HOST:$SNMPD_PORT
 #CONFIG_HOST=dtlsudp:$IPv4_LO:$DTLSUDP_PORT
 #CONFIG_HOST=dtlsudp6:[$IPv6_LO]:$DTLSUDP_PORT
 
+source test_trap/debug.sh
+
 echoerr() { echo "$@" 1>&2; }
 
 #####################################################################
@@ -221,14 +223,18 @@ function create_snmpd_conf ()
     else
 	local TRAPSESS="## trapsess $inform -v 3 -r $RETRYCOUNT -t $TIMEOUT"
     fi
-    local TRAPSESS_USM="$TRAPSESS -e $TRAP_EID -a MD5 -A $TRAP_PW -x $PRIVPROTO -X $TRAP_PW -l authNoPriv -u $TRAP_USER"
+    if [ $INFORM = "yes" ]; then
+	TRAPSESS_USM="$TRAPSESS -a MD5 -A $TRAP_PW -x $PRIVPROTO -X $TRAP_PW -l authNoPriv -u $TRAP_USER"
+    else
+	TRAPSESS_USM="$TRAPSESS -e $TRAP_EID -a MD5 -A $TRAP_PW -x $PRIVPROTO -X $TRAP_PW -l authNoPriv -u $TRAP_USER"
+    fi
     local TRAPSESS_TSM=$TRAPSESS
 
     $TRACE $FUNCNAME
 
     cp $conf_in $conf
 
-    echo "oldEngineID $TRAP_EID" >> $conf
+#    echo "oldEngineID $TRAP_EID" >> $conf
     echo "createUser $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\"" >> $conf
     echo "createUser $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\"" >> $conf
     echo "rwuser $USM_CMD_USER" >> $conf
@@ -272,9 +278,14 @@ function create_snmptrapd_conf ()
 
     cp $conf_in $conf
     echo -e "\n# USM" >> $conf
-    echo "oldEngineID $TRAP_EID" >> $conf
-    echo createUser -e $TRAP_EID $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\" >> $conf
-    echo createUser -e $USM_CMD_EID $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\" >> $conf
+#    echo "oldEngineID $TRAP_EID" >> $conf
+    if [ $INFORM = "yes" ]; then
+	echo createUser $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\" >> $conf
+	echo createUser $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\" >> $conf
+    else
+	echo createUser -e $TRAP_EID $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\" >> $conf
+	echo createUser -e $USM_CMD_EID $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\" >> $conf
+    fi
     echo "authUser log $TRAP_USER" >> $conf
     echo "authUser log $USM_CMD_USER" >> $conf
 
@@ -507,7 +518,7 @@ function configure_mib()
 
     # snmpTargetAddr
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrRowStatus.$obj = 5
-    $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTimeout.$obj = ${TIMEOUT}00
+    $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTimeout.$obj = ${TIMEOUT}000
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrRetryCount.$obj = $RETRYCOUNT
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTagList.$obj = $link
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrParams.$obj = $link
@@ -581,7 +592,11 @@ function send_trap () {
 	    fi
 	else
 	    # USM
-	    $BASH "$SNMPTRAP -e $USM_CMD_EID -a MD5 -A $USM_CMD_PW -x $PRIVPROTO -X $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host \"\" $trap_oid $oid i $2"
+	    if [ $INFORM = "yes" ]; then
+		$BASH "$SNMPTRAP -a MD5 -A $USM_CMD_PW -x $PRIVPROTO -X $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host \"\" $trap_oid $oid i $2"
+	    else
+		$BASH "$SNMPTRAP -e $USM_CMD_EID -a MD5 -A $USM_CMD_PW -x $PRIVPROTO -X $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host \"\" $trap_oid $oid i $2"
+	    fi
 	fi
     fi
 }
@@ -614,9 +629,11 @@ function trap_kick ()
 	# USM
 	local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host"
     fi
-
+    debugall_on
     # Create notification with message "life the universe and everything"
     $SNMPSET .1.3.6.1.4.1.2021.254.8.0 i 1 > /dev/null
+    sleep 1
+    debugall_off
 }
 
 function usage()
