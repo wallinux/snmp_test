@@ -1,4 +1,6 @@
-FROM ubuntu:16.04
+ARG IMAGENAME=ubuntu:16.04
+FROM $IMAGENAME
+
 MAINTAINER Anders Wallin
 
 WORKDIR /root
@@ -17,8 +19,13 @@ RUN DEBIAN_FRONTEND=noninteractive; apt-get install -y git libpopt-dev uuid-dev 
 RUN (git clone git://git.code.sf.net/p/net-snmp/code net-snmp)
 RUN (cd net-snmp; git remote add wayline git://git.code.sf.net/u/wayline/net-snmp; git fetch --all)
 
-RUN DEBIAN_FRONTEND=noninteractive; apt-get install -y libssl-dev net-tools psmisc gdb strace tcpdump iputils-ping ssh sshpass tig doxygen
+RUN DEBIAN_FRONTEND=noninteractive; apt-get install -y libssl-dev net-tools psmisc gdb strace tcpdump iputils-ping ssh sshpass tig doxygen iproute2 rsync
+
+# ubuntu 16.04
 RUN (sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config)
+# ubuntu 18.04
+RUN (sed -i 's/#PermitRootLogin/PermitRootLogin/' /etc/ssh/sshd_config)
+
 RUN (echo root:root | chpasswd)
 RUN (mkdir /root/.ssh)
 RUN (echo "StrictHostKeyChecking no" > /root/.ssh/config)

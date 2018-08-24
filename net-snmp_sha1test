@@ -1,0 +1,29 @@
+#!/bin/bash
+
+BASEDIR=$(dirname $(realpath $0))
+
+inform="no yes"
+md="sha1 sha224 sha256 sha384 sha512"
+
+export TRACE=": "
+export IPv4=no
+export IPv6=no
+export DTLSUDP4="yes"
+export DTLSUDP6="yes"
+export SEND_TRAPS=no
+export SETUP_DYNTRAP=no
+export SETUP_TRAPSESS=yes
+
+status=0
+for a in $inform; do
+    for b in $md; do
+	cmd="DTLSUDP4=$DTLSUDP4 DTLSUDP6=$DTLSUDP6 SETUP_TRAPSESS=$SETUP_TRAPSESS INFORM=$a MD=$b $BASEDIR/net-snmp_traptest -C local"
+	echo -e "\n$cmd"
+	eval $cmd > /dev/null
+	if [ $? != 0 ]; then
+	    status=$((status+1))
+	fi
+    done
+done
+
+exit $status

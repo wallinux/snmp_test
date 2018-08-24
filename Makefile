@@ -3,7 +3,6 @@ default: help
 include common.mk
 
 DOCKER_ID_USER		= wallinux
-REGISTRY_SERVER		= localhost:5000
 
 ################################################################
 
@@ -25,7 +24,7 @@ clean::
 	$(TRACE)
 	$(RM) -r $(STAMPSDIR)
 
-distclean::
+distclean:: clean
 	$(TRACE)
 
 docker.help:

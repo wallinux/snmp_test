@@ -1,5 +1,8 @@
 # snmp.mk
 
+DISTRO			?= ubuntu
+DISTRO_TAG		?= 16.04
+
 SNMP_REGISTRY_SERVER	= $(DOCKER_ID_USER)
 SNMP_TAG		?= AW_master
 SNMP_TAGS		= AW_master AW_v5-7 WR8 WR8_prime WR8_wip
@@ -12,7 +15,7 @@ SNMP_CONTAINERS		= $(SNMP_CONTAINER_0) $(SNMP_CONTAINER_1)
 SNMP_GITROOT		= $(shell git rev-parse --show-toplevel)
 ################################################################
 
-snmp.all: snmp.build.ALL # Build ALL images
+snmp.all: snmp.BUILD # Build ALL images
 
 snmp.build.latest: # Build snmp base image
 	$(TRACE)
@@ -20,7 +23,7 @@ snmp.build.latest: # Build snmp base image
 	$(Q)sed -i '/signingkey/d' snmp/.gitconfig
 	$(Q)sed -i '/gpg/d' snmp/.gitconfig
 	$(CP) $(HOME)/.tmux.conf snmp/
-	$(DOCKER) build --pull -f snmp/Dockerfile -t "snmp" .
+	$(DOCKER) build --pull -f snmp/Dockerfile -t "snmp" --build-arg IMAGENAME=$(DISTRO):$(DISTRO_TAG) .
 	$(MKSTAMP)
 
 snmp.build.%: snmp.build.latest # Build snmp image for SNMP_TAG
@@ -34,7 +37,10 @@ snmp.build.%: snmp.build.latest # Build snmp image for SNMP_TAG
 	$(MAKE) snmp.tag SNMP_TAG=$*
 	$(MKSTAMP)
 
-snmp.build.ALL: # Build net-snmp for all images
+snmp.build:
+	$(MAKE) snmp.build.$(SNMP_TAG)
+
+snmp.BUILD: # Build net-snmp for ALL images
 	$(Q)$(foreach tag,$(SNMP_TAGS),make snmp.build.$(tag); )
 
 snmp.update.%: # Update snmp image for SNMP_TAG
@@ -47,7 +53,7 @@ snmp.update.%: # Update snmp image for SNMP_TAG
 	$(RM) $(dockerfile)
 	$(MAKE) snmp.tag SNMP_TAG=$*
 
-snmp.update.ALL: # Update net-snmp for all images
+snmp.UPDATE: # Update net-snmp for ALL images
 	$(Q)$(foreach tag,$(SNMP_TAGS),make snmp.update.$(tag); )
 
 snmp.prepare.%:
