@@ -50,20 +50,18 @@ function tokenall_status ()
 ##############################################################################
 function debugall_on ()
 {
-    tokenall_on
-    debug_on
+    $TRACE $FUNCNAME
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 1 > $DEBUG_OUT
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 1 > $DEBUG_OUT
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0 = 1 > $DEBUG_OUT
 }
 
 function debugall_off ()
 {
-    tokenall_off
-    debug_off
-}
-
-function debugall_status ()
-{
-    tokenall_status
-    debug_status
+    $TRACE $FUNCNAME
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 2 > $DEBUG_OUT
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 2 > $DEBUG_OUT
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0 = 2 > $DEBUG_OUT
 }
 
 ##############################################################################
