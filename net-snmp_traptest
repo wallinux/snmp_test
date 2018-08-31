@@ -386,15 +386,13 @@ function tcpdump_capture ()
 
 function tcpdump_read ()
 {
-    if [ "$TCPDUMP" = "yes" ]; then
-	# workaround: need a last package to close the tcpdump capture
-	ping6 -c 1 ::1 >/dev/null
-	tcpdump -T snmp -r $TCPDUMP_CAP \
-		port $SNMPD_PORT or \
-		port $DTLSUDP_PORT or \
-		port $SNMPTRAPD_PORT or \
-		port $SNMPTRAPD_DTLSUDP_PORT
-    fi
+    # workaround: need a last package to close the tcpdump capture
+    ping6 -c 1 ::1 >/dev/null
+    tcpdump -T snmp -r $TCPDUMP_CAP \
+	    port $SNMPD_PORT or \
+	    port $DTLSUDP_PORT or \
+	    port $SNMPTRAPD_PORT or \
+	    port $SNMPTRAPD_DTLSUDP_PORT
 }
 
 function get_ipv ()
@@ -638,11 +636,11 @@ function trap_kick ()
 	# USM
 	local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host"
     fi
-    debugall_on
+    #debugall_on
     # Create notification with message "life the universe and everything"
     $SNMPSET .1.3.6.1.4.1.2021.254.8.0 i 1 > /dev/null
     sleep 1
-    debugall_off
+    #debugall_off
 }
 
 function usage()
@@ -728,7 +726,9 @@ snmp_start
 [ "$TCPDUMP" = "yes" ] && tcpdump_capture any $TCPDUMP_TIMEOUT
 trap_kick $CONFIG_HOST
 sleep $TCPDUMP_TIMEOUT
-[ "$TCPDUMP" = "yes" ] && $(tcpdump_read; cp $TCPDUMP_CAP .)
+sleep 3
+[ "$TCPDUMP" = "yes" ] && tcpdump_read
+[ "$TCPDUMP" = "yes" ] && cp $TCPDUMP_CAP .
 
 if [ "$trap_target" = "remote" ]; then
     echo -e "\n---- Get REMOTE snmptrapd.log"
