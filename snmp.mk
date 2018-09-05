@@ -26,7 +26,7 @@ snmp.build.latest: # Build snmp base image
 	$(DOCKER) build --pull -f snmp/Dockerfile -t "snmp" --build-arg IMAGENAME=$(DISTRO):$(DISTRO_TAG) .
 	$(MKSTAMP)
 
-snmp.build.%: snmp.build.latest # Build snmp image for SNMP_TAG
+snmp.build.%: snmp.build.latest
 	$(eval dockerfile=snmp/Dockerfile.$*)
 	$(ECHO) "FROM snmp" > $(dockerfile)
 	$(ECHO) "MAINTAINER Anders Wallin" >> $(dockerfile)
@@ -37,13 +37,13 @@ snmp.build.%: snmp.build.latest # Build snmp image for SNMP_TAG
 	$(MAKE) snmp.tag SNMP_TAG=$*
 	$(MKSTAMP)
 
-snmp.build:
+snmp.build: # Build snmp image for SNMP_TAG
 	$(MAKE) snmp.build.$(SNMP_TAG)
 
 snmp.BUILD: # Build net-snmp for ALL images
 	$(Q)$(foreach tag,$(SNMP_TAGS),make snmp.build.$(tag); )
 
-snmp.update.%: # Update snmp image for SNMP_TAG
+snmp.update.%:
 	$(eval dockerfile=snmp/Dockerfile.$*)
 	$(MAKE) snmp.build.$*
 	$(ECHO) "FROM snmp:$*" > $(dockerfile)
@@ -52,6 +52,9 @@ snmp.update.%: # Update snmp image for SNMP_TAG
 	$(DOCKER) build -f $(dockerfile) -t "snmp:$*" .
 	$(RM) $(dockerfile)
 	$(MAKE) snmp.tag SNMP_TAG=$*
+
+snmp.update: # Update snmp image for SNMP_TAG
+	$(MAKE) snmp.update.$(SNMP_TAG)
 
 snmp.UPDATE: # Update net-snmp for ALL images
 	$(Q)$(foreach tag,$(SNMP_TAGS),make snmp.update.$(tag); )
