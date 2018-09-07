@@ -8,6 +8,7 @@
 [ -z "$SNMP_PROTOCOL" ] && SNMP_PROTOCOL=3
 [ -z "$SETX" ] && SETX=""
 [ -z "$INFORM" ] && INFORM=no
+[ $INFORM = "yes" ] && inform="-Ci"
 [ -z "$SETUP_TRAPSESS" ] && SETUP_TRAPSESS=yes
 [ -z "$SETUP_DYNTRAP" ] && SETUP_DYNTRAP=yes
 [ -z "$SEND_TRAPS" ] && SEND_TRAPS=yes
@@ -62,6 +63,10 @@ TSM_USER=tsmuser
 EPRIME_CA=ca.eprime.com
 EPRIME_EMAIL=admin@eprime.com
 HOSTNAME=$(hostname)
+
+DYNTRAP_USER=dyntrapuser
+DYNTRAP_PW=dyntrap1234
+DYNTRAP_EID=0x80001f8880523983647b8b0355
 
 TRAP_USER=trapuser
 TRAP_PW=trap1234
@@ -224,8 +229,6 @@ function create_snmpd_conf ()
     local host_ipv4=$3
     local host_ipv6=$4
 
-    [ $INFORM = "yes" ] && inform="-Ci"
-
     if [ "$SETUP_TRAPSESS" = "yes" ]; then
 	local TRAPSESS="trapsess $inform -v 3 -r $RETRYCOUNT -t $TIMEOUT"
     else
@@ -244,7 +247,8 @@ function create_snmpd_conf ()
 
 #    echo "oldEngineID $TRAP_EID" >> $conf
     echo "createUser $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\"" >> $conf
-    echo "createUser $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\"" >> $conf
+    #echo "createUser $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\"" >> $conf
+    echo "createUser $DYNTRAP_USER MD5 \"$DYNTRAP_PW\" $PRIVPROTO \"$DYNTRAP_PW\"" >> $conf
     echo "rwuser $USM_CMD_USER" >> $conf
     echo "certSecName 10 $appCert --cn" >> $conf
     echo "rwuser -s tsm $APP_USER authpriv" >> $conf
@@ -272,7 +276,7 @@ function create_snmpd_conf ()
 	    echo "rwuser -s tsm $TSM_USER authpriv" >> $conf
 
 	    [ "$DTLSUDP4" = "yes" ] && echo "$TRAPSESS_TSM $tls_options dtlsudp:$host_ipv4:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
-	    [ "$DTLSUDP6" = "yes" ] && echo "$TRAPSESS_TSM dtlsudp6:[$host_ipv6]:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
+	    [ "$DTLSUDP6" = "yes" ] && echo "$TRAPSESS_TSM $tls_options dtlsudp6:[$host_ipv6]:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
 	fi
     fi
 }
@@ -289,12 +293,15 @@ function create_snmptrapd_conf ()
 #    echo "oldEngineID $TRAP_EID" >> $conf
     if [ $INFORM = "yes" ]; then
 	echo createUser $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\" >> $conf
+	echo createUser $DYNTRAP_USER MD5 \"$DYNTRAP_PW\" $PRIVPROTO \"$DYNTRAP_PW\" >> $conf
 	echo createUser $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\" >> $conf
     else
 	echo createUser -e $TRAP_EID $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\" >> $conf
+	echo createUser -e $DYNTRAP_EID $DYNTRAP_USER MD5 \"$DYNTRAP_PW\" $PRIVPROTO \"$DYNTRAP_PW\" >> $conf
 	echo createUser -e $USM_CMD_EID $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\" >> $conf
     fi
     echo "authUser log $TRAP_USER" >> $conf
+    echo "authUser log $DYNTRAP_USER" >> $conf
     echo "authUser log $USM_CMD_USER" >> $conf
 
     if [ "$DTLSUDP4" = "yes" ] || [ "$DTLSUDP6" = "yes" ]; then
@@ -360,7 +367,6 @@ function snmp_start () {
 	#local snmpd_debug="-d -Dtrap,trap:*,usm,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:openssl:fingerprint,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,snmpv3_build,netsnmp_udp6,AW,snmp_sess_add,target_sessions,netsnmp_udpbase,snmpv3,netsnmp_sockaddr_in,netsnmp_sockaddr_in6_2,snmp_api,9:cert,sslctx_client,tls_x509:verif,tlstmCertToTSNTable:save,read_config,cert:find:params,cert:index:dir,9:cert:file:add,9:cert:read,read_config:store,tlstmCertToTSNTable:save,tlstmCertToTSNTable,ssl:cert:chain"
 	#local snmpd_debug="-DALL -d"
     fi
-    local snmpd_debug="-d -D9:openssl,9:openssl:fingerprint,ssl:cert:chain"
     $TRACE $FUNCNAME
     echo '/tmp/core.%e.%p' > /proc/sys/kernel/core_pattern
     ulimit -c unlimited
@@ -476,8 +482,8 @@ function configure_mib()
 
     echo -e "\n--- HOST: $host TRAPADDR: $2:$3 ($targetaddr) OBJ=$obj"
 
-    #snmpusm -v 3 -u $USM_CMD_USER  -n "" -l authNoPriv -a MD5 -A $USM_CMD_PW $host create $TRAP_USER $USM_CMD_USER
-    #snmpusm -v 3 -x $PRIVPROTO -u $TRAP_USER -n "" -l authNoPriv -a MD5 -A $USM_CMD_PW $host passwd $USM_CMD_PW $TRAP_PW
+    #snmpusm -v 3 -u $USM_CMD_USER  -n "" -l authNoPriv -a MD5 -A $USM_CMD_PW $host create $DYNTRAP_USER $USM_CMD_USER
+    #snmpusm -v 3 -x $PRIVPROTO -u $DYNTRAP_USER -n "" -l authNoPriv -a MD5 -A $USM_CMD_PW $host passwd $USM_CMD_PW $DYNTRAP_PW
     #snmpget -v 3 -u $TRAP_USER -n "" -l authNoPriv -a MD5 -A $TRAP_PW $host sysUpTime.0
 
     echo $host | grep dtlsudp >/dev/null
@@ -501,8 +507,12 @@ function configure_mib()
 	if [ $SNMP_PROTOCOL = "3" ]; then
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 3
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.$obj = 3
-	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $TRAP_USER
-	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 3
+	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = $DYNTRAP_USER
+	    if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
+		$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 3
+	    else
+		$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 2
+	    fi
 	else
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 1
 	    $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.$obj = 2
@@ -543,7 +553,7 @@ function configure_mib()
 
     # tlstmAddrTable TBD
 
-    # enable the trap?
+    # enable the trap
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrRowStatus.$obj = 1
     $SNMPSET SNMP-TARGET-MIB::snmpTargetParamsRowStatus.$obj = 1
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.$obj = 1
@@ -580,7 +590,6 @@ function send_trap () {
 	#local trap_debug="-Lo -Dtrap,usm,tsm -d"
 	local trap_debug="-Lf $SNMPTRAP_LOG -DALL -d"
     fi
-    [ $INFORM = "yes" ] && inform="-Ci"
     local SNMPTRAP="snmptrap $inform $trap_debug -v 3 -r 0 -t 2"
 
     $NOTE "Send TRAP $host v$SNMP_PROTOCOL"
@@ -621,13 +630,14 @@ function configure_mibs ()
     [ $IPv6 = yes ]     && configure_mib $CONFIG_HOST $CONFIG_IPv6 $SNMPTRAPD_PORT
     [ $DTLSUDP4 = yes ] && configure_mib $CONFIG_HOST $CONFIG_IPv4 $SNMPTRAPD_DTLSUDP_PORT
     [ $DTLSUDP6 = yes ] && configure_mib $CONFIG_HOST $CONFIG_IPv6 $SNMPTRAPD_DTLSUDP_PORT
-
-    [ "$TRACE" != ": " ] && get_mib $CONFIG_HOST
 }
 
 function trap_kick ()
 {
     local host=$1
+    #local snmpset_debug="-Dsnmp -d"
+
+    $TRACE $FUNCNAME
     echo $host | grep dtlsudp >/dev/null
     if [ "$?" -eq 0 ]; then
 	# TSM
@@ -636,11 +646,11 @@ function trap_kick ()
 	# USM
 	local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host"
     fi
-    #debugall_on
+    debugall_on
     # Create notification with message "life the universe and everything"
     $SNMPSET .1.3.6.1.4.1.2021.254.8.0 i 1 > /dev/null
     sleep 1
-    #debugall_off
+    debugall_off
 }
 
 function usage()
@@ -721,6 +731,8 @@ set_servers
 snmp_start
 
 [ "$SETUP_DYNTRAP" = "yes" ] && configure_mibs
+[ "$TRACE" != ": " ] && get_mib $CONFIG_HOST
+
 [ "$SEND_TRAPS" = "yes" ] && send_traps
 
 [ "$TCPDUMP" = "yes" ] && tcpdump_capture any $TCPDUMP_TIMEOUT
@@ -765,7 +777,7 @@ if [ "$SEND_TRAPS" = "yes" ]; then
 	echoerr " FAILED: got $no_of_cmdtraps expected $NO_OF_CMDTRAPS cmd traps"
 	status=-1
     else
-	echoerr " PASSED: got $no_of_cmdtraps of cmd traps"
+	echoerr " PASSED: got $no_of_cmdtraps cmd traps"
     fi
 fi
 
@@ -780,11 +792,8 @@ fi
 exit $status
 
 # TODO
-- USM send_traps not working (inform works)
 - TLS_VALIDATION=trust_anchor INFORM=yes SETUP_TRAPSESS=yes  # do not work. Have not been able to configure it correct!?!?
 - Try: Define NETSNMP_FEATURE_REMOVE_TLSTMADDR_GET_SERVERID
-- 5.8-rc3 skiljer inte på DTLSUDP4 och 6 i snmptrapd.log
-- DYNTRAP+TRAPSESS saknar en DTLSUDP meddelande i både 5.7.3 och 5.8, verkar vara dtlsudp4 som saknas från både trapsess och dyntrap i 5.7.3, verkar vara kombon 4 st trappar som failar: Nytt testfall
-har inte kört så tidigare! Skiljer sig USM mellan dyntrap och trapsess?
+- DYNTRAP+TRAPSESS saknar en DTLSUDP meddelande i både 5.7.3 och 5.8, verkar vara dtlsudp4 som saknas från både trapsess och dyntrap i 5.7.3, verkar vara kombon 4 st trappar som failar: Nytt testfall har inte kört så tidigare! Skiljer sig USM mellan dyntrap och trapsess?
 
 
