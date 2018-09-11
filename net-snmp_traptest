@@ -264,16 +264,15 @@ function create_snmpd_conf ()
 
 	if [ "$DTLSUDP4" = "yes" ] || [ "$DTLSUDP6" = "yes" ]; then
 	    if [ "$TLS_VALIDATION" = "peer" ]; then
-		local tls_options="-T peerCert=$trapdCert"
+		$TRACE "peer"
+		#local tls_options="-T peerCert=$trapdCert"
+		echo "[snmp] peerCert $trapdCert" >> $conf
 	    else
 		local tls_options="-T trust_cert=$caCert -T their_hostname=$HOSTNAME"
 		echo "[snmp] trustCert $caCert" >> $conf
 	    fi
 	    echo "[snmp] localCert $snmpdCert" >> $conf
-
-	    #	echo "certSecName 11 $trapdcert --cn" >> $conf
-	    #	echo "snmpTlstmCertToTSNEntry 100 $trapdCert --any  1"  >> $conf
-	    echo "rwuser -s tsm $TSM_USER authpriv" >> $conf
+	    #echo "rwuser -s tsm $TSM_USER authpriv" >> $conf
 
 	    [ "$DTLSUDP4" = "yes" ] && echo "$TRAPSESS_TSM $tls_options dtlsudp:$host_ipv4:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
 	    [ "$DTLSUDP6" = "yes" ] && echo "$TRAPSESS_TSM $tls_options dtlsudp6:[$host_ipv6]:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
@@ -361,10 +360,10 @@ function set_servers()
 
 function snmp_start () {
     if [ "$DEBUG" = "yes" ]; then
-	#local snmptrapd_debug="-DAW,trap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,9:openssl:fingerprint,cert:find:params,tls,tlsbase,tls:*,tls_x509:* -d"
-	local snmptrapd_debug="-DALL -d"
+	local snmptrapd_debug="-DAW,trap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,9:openssl:fingerprint,cert:find:params,tls,tlsbase,tls:*,tls_x509:* -d"
+	#local snmptrapd_debug="-DALL -d"
 
-	#local snmpd_debug="-d -Dtrap,trap:*,usm,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:openssl:fingerprint,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,snmpv3_build,netsnmp_udp6,AW,snmp_sess_add,target_sessions,netsnmp_udpbase,snmpv3,netsnmp_sockaddr_in,netsnmp_sockaddr_in6_2,snmp_api,9:cert,sslctx_client,tls_x509:verif,tlstmCertToTSNTable:save,read_config,cert:find:params,cert:index:dir,9:cert:file:add,9:cert:read,read_config:store,tlstmCertToTSNTable:save,tlstmCertToTSNTable,ssl:cert:chain"
+	local snmpd_debug="-d -Dtrap,trap:*,usm,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:openssl:fingerprint,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,snmpv3_build,netsnmp_udp6,AW,snmp_sess_add,target_sessions,netsnmp_udpbase,snmpv3,netsnmp_sockaddr_in,netsnmp_sockaddr_in6_2,snmp_api,9:cert,sslctx_client,tls_x509:verif,tlstmCertToTSNTable:save,read_config,cert:find:params,cert:index:dir,9:cert:file:add,9:cert:read,read_config:store,tlstmCertToTSNTable:save,tlstmCertToTSNTable,ssl:cert:chain"
 	#local snmpd_debug="-DALL -d"
     fi
     $TRACE $FUNCNAME

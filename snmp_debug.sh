@@ -59,9 +59,9 @@ function debugall_on ()
 function debugall_off ()
 {
     $TRACE $FUNCNAME
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 2 > $DEBUG_OUT
     $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 2 > $DEBUG_OUT
     $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0 = 2 > $DEBUG_OUT
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 2 > $DEBUG_OUT
 }
 
 ##############################################################################

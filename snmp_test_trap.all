@@ -1,0 +1,37 @@
+#!/bin/bash
+
+DTLSUDP4="no yes"
+DTLSUDP6="no yes"
+INFORM="no yes"
+SETUP_TRAPSESS="no yes"
+SETUP_DYNTRAP="no yes"
+
+[ -z "$IPv4" ] && export IPv4=no
+[ -z "$IPv6" ] && export IPv6=no
+[ -z "$SEND_TRAPS" ] && export SEND_TRAPS=yes
+[ -z "$DEBUG" ] && export DEBUG=no
+[ -z "$MD" ] && export MD=sha1
+
+rm -f $0.fail $0.out
+echo -e "#!/bin/sh\n\n" > $0.fail
+chmod +x $0.fail
+
+for dtlsudp4 in $DTLSUDP4; do
+    for dtlsudp6 in $DTLSUDP6; do
+	for inform in $INFORM; do
+	    for setup_trapsess in $SETUP_TRAPSESS; do
+		for setup_dyntrap in $SETUP_DYNTRAP; do
+		    echo -n "DTLSUDP4=$dtlsudp4 DTLSUDP6=$dtlsudp6 INFORM=$inform SETUP_TRAPSESS=$setup_trapsess SETUP_DYNTRAP=$setup_dyntrap ./snmp_test_trap -c local"
+		    DTLSUDP4=$dtlsudp4 DTLSUDP6=$dtlsudp6 INFORM=$inform SETUP_TRAPSESS=$setup_trapsess SETUP_DYNTRAP=$setup_dyntrap ./snmp_test_trap -c local > $0.out
+		    if [ $? != 0 ]; then
+			echo IPv4=$IPv4 IPv6=$IPv6 DTLSUDP4=$dtlsudp4 DTLSUDP6=$dtlsudp6 INFORM=$inform SETUP_TRAPSESS=$setup_trapsess SETUP_DYNTRAP=$setup_dyntrap SEND_TRAPS=$SEND_TRAPS DEBUG=$DEBUG MD=$MD ./snmp_test_trap -C local >$0.fail
+		    fi
+		done
+	    done
+	done
+    done
+done
+
+echo -e "\n--------- FAILING TESTS -------------"
+cat $0.fail
+
