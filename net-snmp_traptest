@@ -62,7 +62,6 @@ APP_USER=appuser
 TSM_USER=tsmuser
 EPRIME_CA=ca.eprime.com
 EPRIME_EMAIL=admin@eprime.com
-HOSTNAME=$(hostname)
 
 DYNTRAP_USER=dyntrapuser
 DYNTRAP_PW=dyntrap1234
@@ -86,7 +85,10 @@ IPv4_DEV0=$(ip -o -4 addr list $IPDEV0 | head -1 | awk '{print $4}' | cut -d/ -f
 IPv4_DEV0_LAST=$(echo $IPv4_DEV0 | cut -d'.' -f4)
 
 IPv6_HOST=::
-IPv6_LO=::1
+IPv6_LO=0:0:0:0:0:0:0:1
+
+HOSTNAME=$(hostname)
+#HOSTNAME=$IPv4_DEV0
 
 TCPDUMP_TIMEOUT=3
 
@@ -179,7 +181,7 @@ function prepare_config ()
 
 function create_cert ()
 {
-    local ca_config="--org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email $EPRIME_EMAIL --host $HOSTNAME"
+    local ca_config="--org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email $EPRIME_EMAIL --san DNS:$HOSTNAME"
     local cert_config="--org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email $EPRIME_EMAIL \
 		       --san DNS:$HOSTNAME --with-ca $EPRIME_CA"
 
@@ -384,7 +386,7 @@ function tcpdump_capture ()
     local rotate_seconds=$2
     local filecount=1
     if [ "$TCPDUMP" = "yes" ]; then
-	tcpdump -G $rotate_seconds -W $filecount -w $TCPDUMP_CAP -i $interface &
+	tcpdump -G $rotate_seconds -W $filecount -w $TCPDUMP_CAP -i $interface &>/dev/null &
 	sleep 1
     fi
 }
@@ -717,7 +719,7 @@ elif [ "$trap_target" = "remote" ]; then
 else
     # default = loopback
     CONFIG_IPv4=$IPv4_LO
-    CONFIG_IPv6=0:0:0:0:0:0:0:1
+    CONFIG_IPv6=$IPv6_LO
 fi
 
 $NOTE $(date) IPv4: $CONFIG_IPv4 IPv6: $CONFIG_IPv6 $trap_target
@@ -793,6 +795,11 @@ exit $status
 # TODO
 - TLS_VALIDATION=trust_anchor INFORM=yes SETUP_TRAPSESS=yes  # do not work. Have not been able to configure it correct!?!?
 - Try: Define NETSNMP_FEATURE_REMOVE_TLSTMADDR_GET_SERVERID
-- DYNTRAP+TRAPSESS saknar en DTLSUDP meddelande i både 5.7.3 och 5.8, verkar vara dtlsudp4 som saknas från både trapsess och dyntrap i 5.7.3, verkar vara kombon 4 st trappar som failar: Nytt testfall har inte kört så tidigare! Skiljer sig USM mellan dyntrap och trapsess?
-
-
+- DYNTRAP+TRAPSESS saknar en DTLSUDP meddelande i både 5.7.3 och 5.8, OM dyntrap och trapsess har samma target!! Använder samma biocache. timeout för inform
+- 
+- add their_hostname as config
+- don't set hostname during startup since we are not server
+- remove checking of hostname
+- check why no DNS name in CA still works
+- checking of hostname is done AFTER it's sent!!
+- net-snmp-cert has no argument HOSTNAME, remove
