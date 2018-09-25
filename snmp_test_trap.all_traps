@@ -3,8 +3,8 @@
 DTLSUDP4="no yes"
 DTLSUDP6="no yes"
 INFORM="no yes"
-SETUP_TRAPSESS="no yes"
-SETUP_DYNTRAP="no yes"
+SETUP_TRAPSESS="no"
+SETUP_DYNTRAP="no"
 TLS_TYPE="peer trust"
 
 TARGET="loopback local remote"
@@ -12,7 +12,7 @@ TARGET="loopback local remote"
 
 export IPv4=no
 export IPv6=no
-export SEND_TRAPS=no
+export SEND_TRAPS=yes
 export DEBUG=no
 export MD=sha1
 
@@ -41,9 +41,6 @@ for dtlsudp4 in $DTLSUDP4; do
 			    if [ $dtlsudp4 = no ] && [ $dtlsudp6 = no ]; then
 				continue
 			    fi
-			    if [ $setup_trapsess = no ] && [ $setup_dyntrap = no ]; then
-				continue
-			    fi
 			    echo -n "DTLSUDP4=$dtlsudp4 DTLSUDP6=$dtlsudp6 INFORM=$inform SETUP_TRAPSESS=$setup_trapsess SETUP_DYNTRAP=$setup_dyntrap TLS_TYPE=$tls_type ./snmp_test_trap -c $target : "
 			    DTLSUDP4=$dtlsudp4 DTLSUDP6=$dtlsudp6 INFORM=$inform SETUP_TRAPSESS=$setup_trapsess SETUP_DYNTRAP=$setup_dyntrap TLS_TYPE=$tls_type ./snmp_test_trap -c $target > $OUT_DIR/$0.out.$1
 			    if [ $? != 0 ]; then
@@ -54,7 +51,7 @@ for dtlsudp4 in $DTLSUDP4; do
 				     ./snmp_test_trap -c $target >> $OUT_FAILFILE
 			    fi
 			    cp -a /tmp/snmp/test/ $OUT_DIR/test.$i
-			    [ "$TCPDUMP" = "yes" ] && tcpdump -T snmp -r $OUT_DIR/test.$i/tcpdump.pcap port 10162 > $OUT_DIR/test.$i/tcpdump.txt 2> /dev/null
+			    tcpdump -T snmp -r $OUT_DIR/test.$i/tcpdump.pcap port 10162 > $OUT_DIR/test.$i/tcpdump.txt 2> /dev/null
 			    i=$((i+1))
 			done
 		    done

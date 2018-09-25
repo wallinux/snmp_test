@@ -13,9 +13,10 @@
 [ -z "$SETUP_DYNTRAP" ] && SETUP_DYNTRAP=yes
 [ -z "$SEND_TRAPS" ] && SEND_TRAPS=yes
 [ -z "$DEBUG" ] && DEBUG=no
-# TLS_VALIDATION: peer or trust_anchor
-[ -z "$TLS_VALIDATION" ] && TLS_VALIDATION=peer
+[ -z "$DYNDEBUG" ] && DYNDEBUG=no
+[ -z "$TLS_TYPE" ] && TLS_TYPE=peer
 [ -z "$MD" ] && MD=sha1
+[ -z "$CERT_PREFIX" ] && CERT_PREFIX=
 
 [ -z "$IPDEV0" ] && IPDEV0=eth0
 
@@ -29,7 +30,8 @@
 #####################################################################
 BASEDIR=$(dirname $(realpath $0))
 TESTDIR=/tmp/snmp/test
-CERTDIR=/tmp/snmp/cert
+SNMPD_CERTDIR=/tmp/snmp/cert_snmpd
+SNMPTRAPD_CERTDIR=/tmp/snmp/cert_snmpdtrap
 
 SNMPD_LOG=$TESTDIR/snmpd.log
 SNMPD_PID=$TESTDIR/snmpd.pid
@@ -135,10 +137,10 @@ function prepare_remote () {
 	    $SSH_REMOTE "killall -w snmptrapd &> /dev/null"
 	    $SSH_REMOTE "ifconfig $REMOTE_IPDEV0 inet6 add $REMOTE_IPv6/64  &> /dev/null"
 	    $SSH_REMOTE "ip -6 route add default dev $REMOTE_IPDEV0 &> /dev/null"
-	    $SSH_REMOTE "rm -rf $TESTDIR $CERTDIR"
-	    $SSH_REMOTE "mkdir -p $TESTDIR $CERTDIR $SNMP_PERSISTENT_DIR"
+	    $SSH_REMOTE "rm -rf $TESTDIR $SNMPTRAPD_CERTDIR"
+	    $SSH_REMOTE "mkdir -p $TESTDIR $SNMPTRAPD_CERTDIR"
 	    rsync -az $TESTDIR/ $REMOTE_IPv4:$TESTDIR
-	    rsync -az $CERTDIR/ $REMOTE_IPv4:$CERTDIR
+	    rsync -az $SNMPTRAPD_CERTDIR/ $REMOTE_IPv4:$SNMPTRAPD_CERTDIR
 	    $SSH_REMOTE "sed -i 's/^clientaddr/#clientaddr/' $SNMP_CONF"
 	    touch $PREPARE_REMOTE
 	fi
@@ -152,7 +154,7 @@ function prepare_remote () {
 	$SSH_REMOTE "killall -w snmptrapd &> /dev/null"
 	$SSH_REMOTE "rm -f SNMPTRAPD_LOG SNMPTRAPD_PID"
 	echo "REMOTE: snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}"
-	$SSH_REMOTE "source $SNMPENV; snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}"
+	$SSH_REMOTE "SNMPCONFPATH=$TESTDIR:$SNMPTRAPD_CERTDIR snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}"
     fi
 }
 
@@ -182,17 +184,17 @@ function prepare_config ()
 function create_cert ()
 {
     local ca_config="--org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email $EPRIME_EMAIL --san DNS:$HOSTNAME"
-    local cert_config="--org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email $EPRIME_EMAIL \
-		       --san DNS:$HOSTNAME --with-ca $EPRIME_CA"
+    local cert_config="$ca_config --with-ca $EPRIME_CA"
 
     $TRACE $FUNCNAME
-    if [ ! -d $CERTDIR ]; then
+    if [ ! -d $SNMPD_CERTDIR ]; then
 	$BASH "echo Using MD=$MD"
-	$BASH "$NET_SNMP_CERT genca -I -n $EPRIME_CA $ca_config -C $CERTDIR"
+	$BASH "$NET_SNMP_CERT genca -I -n $EPRIME_CA $ca_config -C $SNMPD_CERTDIR"
 
-	$BASH "$NET_SNMP_CERT gencert -I -t snmpd --cn $TSM_USER $cert_config --san email:${EPRIME_EMAIL} -C $CERTDIR"
-	$BASH "$NET_SNMP_CERT gencert -I -t snmpapp --cn $APP_USER $cert_config -C $CERTDIR"
-	$BASH "$NET_SNMP_CERT gencert -I -t snmptrapd --cn $TRAP_USER $cert_config -C $CERTDIR"
+	$BASH "$NET_SNMP_CERT gencert -I -t ${CERT_PREFIX}snmpd     --cn $TSM_USER  $cert_config -C $SNMPD_CERTDIR"
+	$BASH "$NET_SNMP_CERT gencert -I -t ${CERT_PREFIX}snmptrapd --cn $TRAP_USER $cert_config -C $SNMPD_CERTDIR"
+	$BASH "$NET_SNMP_CERT gencert -I -t ${CERT_PREFIX}snmp      --cn $APP_USER  $cert_config -C $SNMPD_CERTDIR"
+	cp -a $SNMPD_CERTDIR $SNMPTRAPD_CERTDIR
     fi
 }
 
@@ -202,11 +204,11 @@ function get_cert ()
     local md=sha1
 
     $TRACE $FUNCNAME
-   
-    caCert=$(openssl x509 -noout -in $CERTDIR/tls/ca-certs/$EPRIME_CA.crt -fingerprint -$md | cut -d= -f2)
-    snmpdCert=$(openssl x509 -noout -in $CERTDIR/tls/certs/snmpd.crt -fingerprint -$md | cut -d= -f2)
-    appCert=$(openssl x509 -noout -in $CERTDIR/tls/certs/snmpapp.crt -fingerprint -$md | cut -d= -f2)
-    trapdCert=$(openssl x509 -noout -in $CERTDIR/tls/certs/snmptrapd.crt -fingerprint -$md | cut -d= -f2)
+
+    caCert=$(openssl    x509 -noout -in $SNMPD_CERTDIR/tls/ca-certs/$EPRIME_CA.crt           -fingerprint -$md | cut -d= -f2)
+    snmpdCert=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/certs/${CERT_PREFIX}snmpd.crt     -fingerprint -$md | cut -d= -f2)
+    appCert=$(openssl   x509 -noout -in $SNMPD_CERTDIR/tls/certs/${CERT_PREFIX}snmp.crt      -fingerprint -$md | cut -d= -f2)
+    trapdCert=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/certs/${CERT_PREFIX}snmptrapd.crt -fingerprint -$md | cut -d= -f2)
 
     [ "$TRACE" != ": " ] && show_cert
 }
@@ -215,7 +217,7 @@ function show_cert ()
 {
     $TRACE $FUNCNAME
 
-    local SignAlg=$(openssl x509 -noout -in $CERTDIR/tls/ca-certs/$EPRIME_CA.crt -text | grep -m 1 Signature | cut -d: -f2 )
+    local SignAlg=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/ca-certs/$EPRIME_CA.crt -text | grep -m 1 Signature | cut -d: -f2 )
 
     $NOTE "SIGN_ALGORITHM: $SignAlg"
     $NOTE "CA_CERT:    $caCert"
@@ -248,6 +250,7 @@ function create_snmpd_conf ()
     cp $conf_in $conf
 
 #    echo "oldEngineID $TRAP_EID" >> $conf
+    echo "[snmp] persistentdir $TESTDIR/snmpd_persist" >> $conf
     echo "createUser $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\"" >> $conf
     #echo "createUser $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\"" >> $conf
     echo "createUser $DYNTRAP_USER MD5 \"$DYNTRAP_PW\" $PRIVPROTO \"$DYNTRAP_PW\"" >> $conf
@@ -265,16 +268,17 @@ function create_snmpd_conf ()
 	[ "$IPv6" = "yes" ] && echo "$TRAPSESS_USM udp6:[$host_ipv6]:$SNMPTRAPD_PORT" >> $conf
 
 	if [ "$DTLSUDP4" = "yes" ] || [ "$DTLSUDP6" = "yes" ]; then
-	    if [ "$TLS_VALIDATION" = "peer" ]; then
+	    if [ "$TLS_TYPE" = "peer" ]; then
 		$TRACE "peer"
-		#local tls_options="-T peerCert=$trapdCert"
+		local tls_options="-T peerCert=$trapdCert"
 		echo "[snmp] peerCert $trapdCert" >> $conf
 	    else
+		$TRACE "trust"
 		local tls_options="-T trust_cert=$caCert -T their_hostname=$HOSTNAME"
 		echo "[snmp] trustCert $caCert" >> $conf
 	    fi
 	    echo "[snmp] localCert $snmpdCert" >> $conf
-	    #echo "rwuser -s tsm $TSM_USER authpriv" >> $conf
+	    echo "rwuser -s tsm $TSM_USER authpriv" >> $conf
 
 	    [ "$DTLSUDP4" = "yes" ] && echo "$TRAPSESS_TSM $tls_options dtlsudp:$host_ipv4:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
 	    [ "$DTLSUDP6" = "yes" ] && echo "$TRAPSESS_TSM $tls_options dtlsudp6:[$host_ipv6]:$SNMPTRAPD_DTLSUDP_PORT" >> $conf
@@ -291,7 +295,9 @@ function create_snmptrapd_conf ()
 
     cp $conf_in $conf
     echo -e "\n# USM" >> $conf
-#    echo "oldEngineID $TRAP_EID" >> $conf
+    #    echo "oldEngineID $TRAP_EID" >> $conf
+    echo "[snmp] persistentdir $TESTDIR/snmptrapd_persist" >> $conf
+
     if [ $INFORM = "yes" ]; then
 	echo createUser $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\" >> $conf
 	echo createUser $DYNTRAP_USER MD5 \"$DYNTRAP_PW\" $PRIVPROTO \"$DYNTRAP_PW\" >> $conf
@@ -310,7 +316,7 @@ function create_snmptrapd_conf ()
 	echo "certSecName 10 $snmpdCert --cn" >> $conf
 	echo "certSecName 11 $appCert --cn" >> $conf
 	echo "[snmp] trustCert $caCert" >> $conf
-	#echo "[snmp] localCert $trapdCert" >> $conf
+	echo "[snmp] localCert $trapdCert" >> $conf
 	echo "authuser log -s tsm $TSM_USER authpriv" >> $conf
 	echo "authuser log -s tsm $APP_USER authpriv" >> $conf
     fi
@@ -327,23 +333,19 @@ function create_snmp_conf ()
     cp $conf_in $conf
     echo "defCommunity $SNMP_COMMUNITY" >> $conf
     if [ "$DTLSUDP4" = "yes" ] || [ "$DTLSUDP6" = "yes" ]; then
-	#echo "trustCert $caCert" >> $conf
 	echo "localCert $appCert" >> $conf
-	#echo "peerCert  $snmpdCert" >> $conf
     fi
     echo $LOGTIMESTAMP >> $conf
 }
 
-SNMPENV=$TESTDIR/snmpenv
+SNMP_ENV=$TESTDIR/snmpenv
 function export_env ()
 {
     $TRACE $FUNCNAME
 
-    echo "export SNMP_PERSISTENT_DIR=$TESTDIR/persist" > $SNMPENV
-    echo "export SNMPCONFPATH=$TESTDIR:$CERTDIR:$SNMP_PERSISTENT_DIR" >> $SNMPENV
-    echo "export MD=$MD" >> $SNMPENV
-    source $SNMPENV
-    mkdir -p $SNMP_PERSISTENT_DIR
+    echo "export SNMPCONFPATH=$TESTDIR:$SNMPD_CERTDIR" >> $SNMP_ENV
+    echo "export MD=$MD" >> $SNMP_ENV
+    source $SNMP_ENV
 }
 
 function set_servers()
@@ -363,7 +365,7 @@ function set_servers()
 function snmp_start () {
     if [ "$DEBUG" = "yes" ]; then
 	local snmptrapd_debug="-DAW,trap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,9:openssl:fingerprint,cert:find:params,tls,tlsbase,tls:*,tls_x509:* -d"
-	#local snmptrapd_debug="-DALL -d"
+	local snmptrapd_debug="-DALL -d"
 
 	local snmpd_debug="-d -Dtrap,trap:*,usm,tsm,tls,openssl,cert,dtlsudp,9:dtlsudp,9:dtlsudp:*,9:openssl,9:openssl:fingerprint,9:tlstmParams,9dtlsudp,snmptls,snmp_openssl,snmpNotifyTable,snmpTargetAddrEntry,snmpTargetParamsEntry,udpbase,netsnmp,send_notifications,snmp_build,snmpv3_build,netsnmp_udp6,AW,snmp_sess_add,target_sessions,netsnmp_udpbase,snmpv3,netsnmp_sockaddr_in,netsnmp_sockaddr_in6_2,snmp_api,9:cert,sslctx_client,tls_x509:verif,tlstmCertToTSNTable:save,read_config,cert:find:params,cert:index:dir,9:cert:file:add,9:cert:read,read_config:store,tlstmCertToTSNTable:save,tlstmCertToTSNTable,ssl:cert:chain"
 	#local snmpd_debug="-DALL -d"
@@ -373,7 +375,7 @@ function snmp_start () {
     ulimit -c unlimited
 
     $NOTE "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}"
-    snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}
+    SNMPCONFPATH=$TESTDIR:$SNMPTRAPD_CERTDIR snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}
     $NOTE "snmpd -V -a -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[@]}"
     snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[@]}
     sleep 3
@@ -394,12 +396,10 @@ function tcpdump_capture ()
 function tcpdump_read ()
 {
     # workaround: need a last package to close the tcpdump capture
-    ping6 -c 1 ::1 >/dev/null
+    ping6 -c 1 $IPv6_LO >/dev/null
     tcpdump -T snmp -r $TCPDUMP_CAP \
-	    port $SNMPD_PORT or \
-	    port $DTLSUDP_PORT or \
 	    port $SNMPTRAPD_PORT or \
-	    port $SNMPTRAPD_DTLSUDP_PORT
+	    port $SNMPTRAPD_DTLSUDP_PORT 2> /dev/null
 }
 
 function get_ipv ()
@@ -502,7 +502,7 @@ function configure_mib()
     if [ $proto = dtlsudp4 ] || [ $proto = dtlsudp6 ]; then
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsMPModel.$obj = 3
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityModel.$obj = 4
-	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = dns:$HOSTNAME
+	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityName.$obj = "__not_used__"
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetParamsSecurityLevel.$obj = 3
     else
 	if [ $SNMP_PROTOCOL = "3" ]; then
@@ -591,7 +591,7 @@ function send_trap () {
 	#local trap_debug="-Lo -Dtrap,usm,tsm -d"
 	local trap_debug="-Lf $SNMPTRAP_LOG -DALL -d"
     fi
-    local SNMPTRAP="snmptrap $inform $trap_debug -v 3 -r 0 -t 2"
+    local SNMPTRAP="snmptrap $trap_debug $inform -v 3 -r 0 -t 2"
 
     $NOTE "Send TRAP $host v$SNMP_PROTOCOL"
     [ $SNMP_PROTOCOL = "1"  ] && $BASH "snmptrap $trap_debug -v $SNMP_PROTOCOL $host $trap_oid \"\"  6 17 \"\"  $oid i $1"
@@ -601,10 +601,9 @@ function send_trap () {
 	echo $host | grep dtlsudp >/dev/null
 	if [ "$?" -eq 0 ]; then
 	    # TSM
-	    if [ "$TLS_VALIDATION" = "peer" ]; then
+	    if [ "$TLS_TYPE" = "peer" ]; then
 		$BASH "$SNMPTRAP -T peerCert=$trapdCert -l authPriv $host \"\" $trap_oid $oid i $2"
 	    else
-		#$BASH "$SNMPTRAP -T trust_cert=$caCert -l authPriv $host \"\" $trap_oid $oid i $2"
 		$BASH "$SNMPTRAP -T trust_cert=$caCert -T their_hostname=$HOSTNAME -l authPriv $host \"\" $trap_oid $oid i $2"
 	    fi
 	else
@@ -642,16 +641,16 @@ function trap_kick ()
     echo $host | grep dtlsudp >/dev/null
     if [ "$?" -eq 0 ]; then
 	# TSM
-	local SNMPSET="snmpset -v 3 -T peerCert=$snmpdCert $host"
+	local SNMPSET="snmpset $snmpset_debug -v 3 -T peerCert=$snmpdCert $host"
     else
 	# USM
 	local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host"
     fi
-    debugall_on
+    [ "$DYNDEBUG" = "yes" ] && debugall_on
     # Create notification with message "life the universe and everything"
     $SNMPSET .1.3.6.1.4.1.2021.254.8.0 i 1 > /dev/null
-    sleep 1
-    debugall_off
+    [ "$DYNDEBUG" = "yes" ] && sleep 1
+    [ "$DYNDEBUG" = "yes" ] && debugall_off
 }
 
 function usage()
@@ -672,7 +671,7 @@ function usage()
     echo -n " SETUP_DYNTRAP=$SETUP_DYNTRAP"
     echo -n " SEND_TRAPS=$SEND_TRAPS"
     echo -n " DEBUG=$DEBUG"
-#    echo -n " TLS_VALIDATION=$TLS_VALIDATION"
+#    echo -n " TLS_TYPE=$TLS_TYPE"
     echo -n " MD=$MD"
     echo -e " $0"
 }
@@ -688,7 +687,7 @@ while getopts "cCh" opt; do
 	    ;;
 	C)
 	    snmp_kill
-	    rm -rf $TESTDIR $CERTDIR
+	    rm -rf $TESTDIR $SNMPD_CERTDIR $SNMPTRAPD_CERTDIR
 	    ;;
 	h)
 	    usage
@@ -739,7 +738,6 @@ snmp_start
 [ "$TCPDUMP" = "yes" ] && tcpdump_capture any $TCPDUMP_TIMEOUT
 trap_kick $CONFIG_HOST
 sleep $TCPDUMP_TIMEOUT
-sleep 3
 [ "$TCPDUMP" = "yes" ] && tcpdump_read
 [ "$TCPDUMP" = "yes" ] && cp $TCPDUMP_CAP .
 
@@ -759,7 +757,7 @@ NO_OF_TRAPS=0
 [ "$SETUP_TRAPSESS" = "yes" ] && [ "$IPv6" = "yes" ]     && ((NO_OF_TRAPS++))
 [ "$SETUP_TRAPSESS" = "yes" ] && [ "$DTLSUDP4" = "yes" ] && ((NO_OF_TRAPS++))
 [ "$SETUP_TRAPSESS" = "yes" ] && [ "$DTLSUDP6" = "yes" ] && ((NO_OF_TRAPS++))
-no_of_traps=$(grep "life the universe and everything" $SNMPTRAPD_LOG | wc -l)
+no_of_traps=$(grep "life the universe and everything" $SNMPTRAPD_LOG | grep -v dumpv_ | wc -l)
 if [ "$no_of_traps" != "$NO_OF_TRAPS" ]; then
     echoerr " FAILED: got $no_of_traps expected $NO_OF_TRAPS snmpd traps"
     status=-1
@@ -773,7 +771,7 @@ if [ "$SEND_TRAPS" = "yes" ]; then
     [ "$IPv6" = "yes" ]     && ((NO_OF_CMDTRAPS++))
     [ "$DTLSUDP4" = "yes" ] && ((NO_OF_CMDTRAPS++))
     [ "$DTLSUDP6" = "yes" ] && ((NO_OF_CMDTRAPS++))
-    no_of_cmdtraps=$(grep "netSnmpExampleHeartbeatRate" $SNMPTRAPD_LOG | wc -l)
+    no_of_cmdtraps=$(grep "netSnmpExampleHeartbeatRate" $SNMPTRAPD_LOG | grep -v dumpv_ | wc -l)
     if [ "$no_of_cmdtraps" != "$NO_OF_CMDTRAPS" ]; then
 	echoerr " FAILED: got $no_of_cmdtraps expected $NO_OF_CMDTRAPS cmd traps"
 	status=-1
@@ -793,13 +791,7 @@ fi
 exit $status
 
 # TODO
-- TLS_VALIDATION=trust_anchor INFORM=yes SETUP_TRAPSESS=yes  # do not work. Have not been able to configure it correct!?!?
-- Try: Define NETSNMP_FEATURE_REMOVE_TLSTMADDR_GET_SERVERID
-- DYNTRAP+TRAPSESS saknar en DTLSUDP meddelande i både 5.7.3 och 5.8, OM dyntrap och trapsess har samma target!! Använder samma biocache. timeout för inform
-- 
-- add their_hostname as config
-- don't set hostname during startup since we are not server
-- remove checking of hostname
-- check why no DNS name in CA still works
-- checking of hostname is done AFTER it's sent!!
-- net-snmp-cert has no argument HOSTNAME, remove
+- test to configure mib via DTLSUDP
+- run tls tests
+- fix TLS ip addresses
+- test with clientaddr and dtlsudp
