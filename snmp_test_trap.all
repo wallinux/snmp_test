@@ -1,7 +1,10 @@
 #!/bin/bash
 
+#IPv4="no yes"
+#IPv6="no yes"
 DTLSUDP4="no yes"
 DTLSUDP6="no yes"
+#SEND_TRAPS="no yes"
 INFORM="no yes"
 SETUP_TRAPSESS="no yes"
 SETUP_DYNTRAP="no yes"

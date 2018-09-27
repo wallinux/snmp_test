@@ -195,6 +195,9 @@ function create_cert ()
 	$BASH "$NET_SNMP_CERT gencert -I -t ${CERT_PREFIX}snmptrapd --cn $TRAP_USER $cert_config -C $SNMPD_CERTDIR"
 	$BASH "$NET_SNMP_CERT gencert -I -t ${CERT_PREFIX}snmp      --cn $APP_USER  $cert_config -C $SNMPD_CERTDIR"
 	cp -a $SNMPD_CERTDIR $SNMPTRAPD_CERTDIR
+	if [ "$TLS_TYPE" = "trust" ]; then
+	    rm -rf $SNMPD_CERTDIR/tls/certs/${CERT_PREFIX}snmptrapd.crt
+	fi
     fi
 }
 
@@ -208,7 +211,7 @@ function get_cert ()
     caCert=$(openssl    x509 -noout -in $SNMPD_CERTDIR/tls/ca-certs/$EPRIME_CA.crt           -fingerprint -$md | cut -d= -f2)
     snmpdCert=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/certs/${CERT_PREFIX}snmpd.crt     -fingerprint -$md | cut -d= -f2)
     appCert=$(openssl   x509 -noout -in $SNMPD_CERTDIR/tls/certs/${CERT_PREFIX}snmp.crt      -fingerprint -$md | cut -d= -f2)
-    trapdCert=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/certs/${CERT_PREFIX}snmptrapd.crt -fingerprint -$md | cut -d= -f2)
+    trapdCert=$(openssl x509 -noout -in $SNMPTRAPD_CERTDIR/tls/certs/${CERT_PREFIX}snmptrapd.crt -fingerprint -$md | cut -d= -f2)
 
     [ "$TRACE" != ": " ] && show_cert
 }
@@ -249,7 +252,7 @@ function create_snmpd_conf ()
 
     cp $conf_in $conf
 
-#    echo "oldEngineID $TRAP_EID" >> $conf
+    echo "oldEngineID $DYNTRAP_EID" >> $conf
     echo "[snmp] persistentdir $TESTDIR/snmpd_persist" >> $conf
     echo "createUser $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\"" >> $conf
     #echo "createUser $TRAP_USER MD5 \"$TRAP_PW\" $PRIVPROTO \"$TRAP_PW\"" >> $conf
@@ -275,6 +278,9 @@ function create_snmpd_conf ()
 	    else
 		$TRACE "trust"
 		local tls_options="-T trust_cert=$caCert -T their_hostname=$HOSTNAME"
+		#local tls_options="-T trust_cert=$caCert -T their_hostname=*.eprime.com"
+		#local tls_options="-T trust_cert=$caCert -T their_hostname=kalle.eprime.com"
+		#local tls_options="-T trust_cert=$caCert -T their_hostname="
 		echo "[snmp] trustCert $caCert" >> $conf
 	    fi
 	    echo "[snmp] localCert $snmpdCert" >> $conf
@@ -315,7 +321,6 @@ function create_snmptrapd_conf ()
 	echo -e "\n# TSM" >> $conf
 	echo "certSecName 10 $snmpdCert --cn" >> $conf
 	echo "certSecName 11 $appCert --cn" >> $conf
-	echo "[snmp] trustCert $caCert" >> $conf
 	echo "[snmp] localCert $trapdCert" >> $conf
 	echo "authuser log -s tsm $TSM_USER authpriv" >> $conf
 	echo "authuser log -s tsm $APP_USER authpriv" >> $conf
@@ -332,9 +337,7 @@ function create_snmp_conf ()
 
     cp $conf_in $conf
     echo "defCommunity $SNMP_COMMUNITY" >> $conf
-    if [ "$DTLSUDP4" = "yes" ] || [ "$DTLSUDP6" = "yes" ]; then
-	echo "localCert $appCert" >> $conf
-    fi
+    echo "localCert $appCert" >> $conf
     echo $LOGTIMESTAMP >> $conf
 }
 
@@ -641,10 +644,10 @@ function trap_kick ()
     echo $host | grep dtlsudp >/dev/null
     if [ "$?" -eq 0 ]; then
 	# TSM
-	local SNMPSET="snmpset $snmpset_debug -v 3 -T peerCert=$snmpdCert $host"
+	local SNMPSET="snmpset $snmpset_debug -v 3 -t 5 -r 0 -T peerCert=$snmpdCert $host"
     else
 	# USM
-	local SNMPSET="snmpset $snmpset_debug -v 3 -r 0 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host"
+	local SNMPSET="snmpset $snmpset_debug -v 3 -t 5 -r 0 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $host"
     fi
     [ "$DYNDEBUG" = "yes" ] && debugall_on
     # Create notification with message "life the universe and everything"
@@ -791,7 +794,5 @@ fi
 exit $status
 
 # TODO
-- test to configure mib via DTLSUDP
-- run tls tests
 - fix TLS ip addresses
-- test with clientaddr and dtlsudp
+- test with clientaddr and DTLSUDP
