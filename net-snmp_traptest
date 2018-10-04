@@ -31,7 +31,7 @@
 BASEDIR=$(dirname $(realpath $0))
 TESTDIR=/tmp/snmp/test
 SNMPD_CERTDIR=/tmp/snmp/cert_snmpd
-SNMPTRAPD_CERTDIR=/tmp/snmp/cert_snmpdtrap
+SNMPTRAPD_CERTDIR=/tmp/snmp/cert_snmptrapd
 
 SNMPD_LOG=$TESTDIR/snmpd.log
 SNMPD_PID=$TESTDIR/snmpd.pid
@@ -196,7 +196,8 @@ function create_cert ()
 	$BASH "$NET_SNMP_CERT gencert -I -t ${CERT_PREFIX}snmp      --cn $APP_USER  $cert_config -C $SNMPD_CERTDIR"
 	cp -a $SNMPD_CERTDIR $SNMPTRAPD_CERTDIR
 	if [ "$TLS_TYPE" = "trust" ]; then
-	    rm -rf $SNMPD_CERTDIR/tls/certs/${CERT_PREFIX}snmptrapd.crt
+	    rm -f $SNMPD_CERTDIR/tls/certs/${CERT_PREFIX}snmptrapd.crt
+	    rm -f $SNMPD_CERTDIR/tls/private/${CERT_PREFIX}snmptrapd.key
 	fi
     fi
 }
@@ -554,8 +555,6 @@ function configure_mib()
 	$SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTDomain.$obj = SNMPv2-TM::snmpUDPDomain
     fi
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrTAddress.$obj x $targetaddr
-
-    # tlstmAddrTable TBD
 
     # enable the trap
     $SNMPSET SNMP-TARGET-MIB::snmpTargetAddrRowStatus.$obj = 1
