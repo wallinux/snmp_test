@@ -1,0 +1,17 @@
+
+ --- snmptrapd.log
+Created directory: /root/snmp-test/00083340/out/persist_snmptrapd
+Created directory: /root/snmp-test/00083340/out/persist_snmptrapd/cert_indexes
+Created directory: /root/snmp-test/00083340/out/persist_snmptrapd/mib_indexes
+A SNMP version other than 3 was requested with (D)TLS; using 3 anyways
+NET-SNMP version 5.8
+2018-10-04 16:59:11 localhost [DTLSUDP: [127.0.0.1]:53023->[127.0.0.1]:10162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (6) 0:00:00.06	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::coldStart	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+2018-10-04 16:59:11 localhost [DTLSUDP: [127.0.0.1]:55636->[127.0.0.1]:10162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (6) 0:00:00.06	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::coldStart	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+2018-10-04 16:59:13 localhost [DTLSUDP: [127.0.0.1]:55636->[127.0.0.1]:10162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (201) 0:00:02.01	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-AGENT-MIB::nsNotifyShutdown	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpNotificationPrefix
+2018-10-04 16:59:13 localhost [DTLSUDP: [127.0.0.1]:53023->[127.0.0.1]:10162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (201) 0:00:02.01	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-AGENT-MIB::nsNotifyShutdown	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpNotificationPrefix
+2018-10-04 16:59:14 NET-SNMP version 5.8 Stopped.
+Stopping snmptrapd

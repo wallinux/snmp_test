@@ -1,0 +1,75 @@
+#!/bin/bash
+#set -x
+
+CONFDIR=$PWD/conf
+OUTDIR=$PWD/out
+SNMPTRAPD_CERTDIR=$PWD/cert_snmptrapd
+SNMPD_CERTDIR=$PWD/cert_snmpd
+
+function get_cert()
+{
+    caCert=$(openssl x509 -noout -in $1 -fingerprint -$md | cut -d= -f2)
+}
+
+function create_snmptrapd_conf()
+{
+    echo "[snmp] localCert $snmptrapdCert" > $1
+    echo "certSecName 10 $snmpdCert --cn" >> $1
+    echo "authuser log -s tsm tsmuser authpriv" >> $1
+}
+
+function create_snmpd_conf()
+{
+    echo 'access group "" any noauth exact all all all' > $1
+    echo "[snmp] localCert $snmpdCert" >> $1
+    echo "[snmp] trustCert $trustCert" >> $1
+    # trap
+    echo "trapsess -v 3 -r 0 -t 3 -T their_hostname= dtlsudp:127.0.0.1:10162" >> $1
+    # inform
+    echo "trapsess -Ci -v 3 -r 0 -t 3 -T their_hostname= dtlsudp:127.0.0.1:10162" >> $1
+}
+
+function start_snmptrapd()
+{
+    #local debug="-DALL -d"
+    
+    export SNMPCONFPATH=$CONFDIR:$SNMPTRAPD_CERTDIR:$OUTDIR
+    export SNMP_PERSISTENT_DIR=$OUTDIR/persist_snmptrapd
+    snmptrapd $debug -C -c $1 -Lf $OUTDIR/snmptrapd.log dtlsudp:0.0.0.0:10162
+}
+
+function start_snmpd()
+{
+    #local debug="-DALL -d"
+    
+    export SNMPCONFPATH=$CONFDIR:$SNMPD_CERTDIR:$OUTDIR
+    export SNMP_PERSISTENT_DIR=$OUTDIR/persist_snmpd
+    snmpd $debug -C -c $1 -Lf $OUTDIR/snmpd.log dtlsudp:0.0.0.0:10161
+}
+
+# main
+mkdir -p $OUTDIR
+rm -rf $OUTDIR/*
+
+trustCert=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/ca-certs/ca.eprime.com.crt -fingerprint -sha1 | cut -d= -f2)
+snmpdCert=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/certs/rcs_snmpd.crt -fingerprint -sha1 | cut -d= -f2)
+snmptrapdCert=$(openssl x509 -noout -in $SNMPTRAPD_CERTDIR/tls/certs/rcs_snmptrapd.crt -fingerprint -sha1 | cut -d= -f2)
+
+#echo trustCert: $trustCert
+#echo snmpdCert: $snmpdCert
+#echo snmptrapdCert: $snmptrapdCert
+
+create_snmptrapd_conf $OUTDIR/snmptrapd.conf
+create_snmpd_conf $OUTDIR/snmpd.conf
+start_snmptrapd $OUTDIR/snmptrapd.conf
+start_snmpd $OUTDIR/snmpd.conf
+
+sleep 2
+killall snmpd
+sleep 1
+killall snmptrapd
+
+#/bin/echo -e "\n --- snmpd.log"
+#cat $OUTDIR/snmpd.log
+/bin/echo -e "\n --- snmptrapd.log"
+cat $OUTDIR/snmptrapd.log
