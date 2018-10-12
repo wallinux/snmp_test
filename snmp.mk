@@ -2,14 +2,16 @@
 
 DISTRO			?= ubuntu
 DISTRO_TAG		?= 16.04
+export DISTRO_NAME	= $(DISTRO)_$(DISTRO_TAG)
 
 SNMP_REGISTRY_SERVER	= $(DOCKER_ID_USER)
 SNMP_TAG		?= AW_master
-SNMP_TAGS		= AW_master AW_v5-7 WR8 WR8_prime WR8_wip
-SNMP_REMOTE_IMAGE	?= $(SNMP_REGISTRY_SERVER)/snmp:$(SNMP_TAG)
-SNMP_IMAGE		?= snmp:$(SNMP_TAG)
-SNMP_CONTAINER_0	= snmp_0_$(SNMP_TAG)
-SNMP_CONTAINER_1	= snmp_1_$(SNMP_TAG)
+#SNMP_TAGS		= AW_master AW_v5-7 WR8 WR8_prime WR8_wip
+SNMP_TAGS		= AW_master WR8_prime
+SNMP_REMOTE_IMAGE	?= $(SNMP_REGISTRY_SERVER)/snmp_$(DISTRO_NAME):$(SNMP_TAG)
+SNMP_IMAGE		?= snmp_$(DISTRO_NAME):$(SNMP_TAG)
+SNMP_CONTAINER_0	= snmp_$(DISTRO_NAME)_0_$(SNMP_TAG)
+SNMP_CONTAINER_1	= snmp_$(DISTRO_NAME)_1_$(SNMP_TAG)
 SNMP_CONTAINER		?= $(SNMP_CONTAINER_0)
 SNMP_CONTAINERS		= $(SNMP_CONTAINER_0) $(SNMP_CONTAINER_1)
 SNMP_GITROOT		= $(shell git rev-parse --show-toplevel)
@@ -23,35 +25,42 @@ snmp.build.latest: # Build snmp base image
 	$(Q)sed -i '/signingkey/d' snmp/.gitconfig
 	$(Q)sed -i '/gpg/d' snmp/.gitconfig
 	$(CP) $(HOME)/.tmux.conf snmp/
-	$(DOCKER) build --pull -f snmp/Dockerfile -t "snmp" --build-arg IMAGENAME=$(DISTRO):$(DISTRO_TAG) .
+	$(DOCKER) build --pull -f snmp/Dockerfile.$(DISTRO_NAME) -t "snmp_$(DISTRO_NAME)" .
+	$(MAKE) snmp.tag SNMP_IMAGE=snmp_$(DISTRO_NAME):latest
+
+snmp.build.$(DISTRO_NAME).latest:
+	$(MAKE) snmp.build.latest DISTRO_NAME=$(DISTRO_NAME)
 	$(MKSTAMP)
 
-snmp.build.%: snmp.build.latest
+snmp.build.%: snmp.build.$(DISTRO_NAME).latest
 	$(eval dockerfile=snmp/Dockerfile.$*)
-	$(ECHO) "FROM snmp" > $(dockerfile)
+	$(ECHO) "FROM snmp_$(DISTRO_NAME):latest" > $(dockerfile)
 	$(ECHO) "MAINTAINER Anders Wallin" >> $(dockerfile)
 	$(ECHO) "RUN (cd net-snmp; git fetch --all; git checkout -b $* wayline/$*)" >> $(dockerfile)
 	$(ECHO) 'RUN [ "/bin/bash", "-c", "/root/build &> /root/build.out" ]' >> $(dockerfile)
-	$(DOCKER) build -f $(dockerfile) -t "snmp:$*" .
+	$(DOCKER) build -f $(dockerfile) -t "snmp_$(DISTRO_NAME):$*" .
 	$(RM) $(dockerfile)
-	$(MAKE) snmp.tag SNMP_TAG=$*
+	$(MAKE) snmp.tag SNMP_IMAGE=snmp_$(DISTRO_NAME):$*
+
+snmp.build.$(DISTRO_NAME).%:
+	$(MAKE) snmp.build.$* DISTRO_NAME=$(DISTRO_NAME)
 	$(MKSTAMP)
 
 snmp.build: # Build snmp image for SNMP_TAG
-	$(MAKE) snmp.build.$(SNMP_TAG)
+	$(MAKE) snmp.build.$(DISTRO_NAME).$(SNMP_TAG)
 
 snmp.BUILD: # Build net-snmp for ALL images
 	$(Q)$(foreach tag,$(SNMP_TAGS),make snmp.build.$(tag); )
 
 snmp.update.%:
 	$(eval dockerfile=snmp/Dockerfile.$*)
-	$(MAKE) snmp.build.$*
-	$(ECHO) "FROM snmp:$*" > $(dockerfile)
+	$(MAKE) snmp.build.$(DISTRO_NAME).$*
+	$(ECHO) "FROM snmp_$(DISTRO_NAME):$*" > $(dockerfile)
 	$(ECHO) "MAINTAINER Anders Wallin" >> $(dockerfile)
 	$(ECHO) "RUN (cd net-snmp; git pull; make install > make_install.out)" >> $(dockerfile)
-	$(DOCKER) build -f $(dockerfile) -t "snmp:$*" .
+	$(DOCKER) build -f $(dockerfile) -t "snmp_$(DISTRO_NAME):$*" .
 	$(RM) $(dockerfile)
-	$(MAKE) snmp.tag SNMP_TAG=$*
+	$(MAKE) snmp.tag SNMP_IMAGE=snmp_$(DISTRO_NAME):$*
 
 snmp.update: # Update snmp image for SNMP_TAG
 	$(MAKE) snmp.update.$(SNMP_TAG)
@@ -126,11 +135,11 @@ snmp.RM: snmp.STOP # Remove ALL snmp containers
 snmp.rmi: # Remove snmp image
 	$(TRACE)
 	$(DOCKER) rmi $(SNMP_IMAGE) || true
-	$(call rmstamp,snmp.build)
+	$(call rmstamp,snmp.build.$(DISTRO_NAME).$(SNMP_TAG))
 
 snmp.RMI: # Remove ALL snmp images
 	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.rmi SNMP_TAG=$(tag); )
-	$(MAKE) snmp.rmi SNMP_TAG=latest
+	$(MAKE) snmp.rmi SNMP_TAG=$(DISTRO_NAME).latest
 
 snmp.remote.rmi: snmp.rm # Remove downloaded snmp image
 	$(TRACE)
@@ -138,7 +147,7 @@ snmp.remote.rmi: snmp.rm # Remove downloaded snmp image
 
 snmp.remote.RMI: # Remove ALL remote snmp images
 	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.remote.rmi SNMP_TAG=$(tag); )
-	$(MAKE) snmp.rmi SNMP_TAG=latest
+	$(MAKE) snmp.rmi SNMP_TAG=$(DISTRO_NAME).latest
 
 snmp.shell.%:
 	$(TRACE)
