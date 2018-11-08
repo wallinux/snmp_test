@@ -192,5 +192,6 @@ snmp.help:
 
 help:: snmp.help
 	$(GREEN)
-	$(ECHO) -e "\nSet SNMP_TAG(default=$(SNMP_TAG)) to run container, available SNMP_TAGS=<$(SNMP_TAGS)>"
+	$(ECHO) -e "\nDISTRO_NAME=$(DISTRO_NAME)"
+	$(ECHO) -e "Set SNMP_TAG(default=$(SNMP_TAG)) to run container, available SNMP_TAGS=<$(SNMP_TAGS)>"
 	$(NORMAL)
