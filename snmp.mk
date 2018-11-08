@@ -2,12 +2,17 @@
 
 DISTRO			?= ubuntu
 DISTRO_TAG		?= 16.04
+DISTRO_TAGS		?= 16.04 18.04
 export DISTRO_NAME	= $(DISTRO)_$(DISTRO_TAG)
 
 SNMP_REGISTRY_SERVER	= $(DOCKER_ID_USER)
+
 SNMP_TAG		?= AW_master
-#SNMP_TAGS		= AW_master AW_v5-7 WR8 WR8_prime WR8_wip
-SNMP_TAGS		= AW_master WR8_prime
+SNMP_TAGS_16.04		= AW_master WR8_prime
+SNMP_TAGS_18.04		= AW_master
+SNMP_TAGS_18.10		= AW_master
+SNMP_TAGS		= $(SNMP_TAGS_$(DISTRO_TAG))
+
 SNMP_REMOTE_IMAGE	?= $(SNMP_REGISTRY_SERVER)/snmp_$(DISTRO_NAME):$(SNMP_TAG)
 SNMP_IMAGE		?= snmp_$(DISTRO_NAME):$(SNMP_TAG)
 SNMP_CONTAINER_0	= snmp_$(DISTRO_NAME)_0_$(SNMP_TAG)
@@ -17,7 +22,10 @@ SNMP_CONTAINERS		= $(SNMP_CONTAINER_0) $(SNMP_CONTAINER_1)
 SNMP_GITROOT		= $(shell git rev-parse --show-toplevel)
 ################################################################
 
-snmp.all: snmp.BUILD # Build ALL images
+snmp.all: snmp.BUILD # Build all snmp images
+
+snmp.ALL: # Build all images for all supported distributions
+	$(Q)$(foreach distro_tag,$(DISTRO_TAGS),make -s V=$(V) snmp.BUILD DISTRO_TAG=$(distro_tag); )
 
 snmp.build.latest: # Build snmp base image
 	$(TRACE)
@@ -29,16 +37,18 @@ snmp.build.latest: # Build snmp base image
 	$(MAKE) snmp.tag SNMP_IMAGE=snmp_$(DISTRO_NAME):latest
 
 snmp.build.$(DISTRO_NAME).latest:
+	$(TRACE)
 	$(MAKE) snmp.build.latest DISTRO_NAME=$(DISTRO_NAME)
 	$(MKSTAMP)
 
 snmp.build.%: snmp.build.$(DISTRO_NAME).latest
+	$(TRACE)
 	$(eval dockerfile=snmp/Dockerfile.$*)
 	$(ECHO) "FROM snmp_$(DISTRO_NAME):latest" > $(dockerfile)
 	$(ECHO) "MAINTAINER Anders Wallin" >> $(dockerfile)
 	$(ECHO) "RUN (cd net-snmp; git fetch --all; git checkout -b $* wayline/$*)" >> $(dockerfile)
 	$(ECHO) 'RUN [ "/bin/bash", "-c", "/root/build &> /root/build.out" ]' >> $(dockerfile)
-	$(DOCKER) build -f $(dockerfile) -t "snmp_$(DISTRO_NAME):$*" .
+	$(DOCKER) build -q -f $(dockerfile) -t "snmp_$(DISTRO_NAME):$*" .
 	$(RM) $(dockerfile)
 	$(MAKE) snmp.tag SNMP_IMAGE=snmp_$(DISTRO_NAME):$*
 
@@ -50,7 +60,7 @@ snmp.build: # Build snmp image for SNMP_TAG
 	$(MAKE) snmp.build.$(DISTRO_NAME).$(SNMP_TAG)
 
 snmp.BUILD: # Build net-snmp for ALL images
-	$(Q)$(foreach tag,$(SNMP_TAGS),make snmp.build.$(tag); )
+	$(Q)$(foreach tag,$(SNMP_TAGS), make -s V=$(V) snmp.build.$(tag); )
 
 snmp.update.%:
 	$(eval dockerfile=snmp/Dockerfile.$*)
@@ -169,6 +179,7 @@ snmp.tag:
 	$(DOCKER) tag $(SNMP_IMAGE) $(SNMP_REMOTE_IMAGE)
 
 snmp.push: snmp.tag # Push image to registry
+	$(TRACE)
 	$(DOCKER) push $(SNMP_REMOTE_IMAGE)
 
 snmp.PUSH: # Push ALL snmp images to registry
