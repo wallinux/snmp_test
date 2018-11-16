@@ -1,75 +1,178 @@
 #!/bin/bash
 #set -x
 
+RED="tput setaf 1"
+GREEN="tput setaf 2"
+NORMAL="tput sgr0"
+ECHO="/bin/echo -e"
+HOSTNAME=$(hostname)
+
+shopt -s expand_aliases
+alias trace='$ECHO --- ${FUNCNAME}'
+
 CONFDIR=$PWD/conf
 OUTDIR=$PWD/out
-SNMPTRAPD_CERTDIR=$PWD/cert_snmptrapd
-SNMPD_CERTDIR=$PWD/cert_snmpd
 
-function get_cert()
+SNMPD_CONF=$OUTDIR/snmpd.conf
+SNMPD_LOG=$OUTDIR/snmpd.log
+SNMPD_CERTDIR=$OUTDIR/cert_snmpd
+
+SNMPTRAPD_CONF=$OUTDIR/snmptrapd.conf
+SNMPTRAPD_LOG=$OUTDIR/snmptrapd.log
+SNMPTRAPD_CERTDIR=$OUTDIR/cert_snmptrapd
+
+
+function cleanup_certs()
 {
-    caCert=$(openssl x509 -noout -in $1 -fingerprint -$md | cut -d= -f2)
+    rm -r $1/tls/newcerts
+    rm -r $1/tls/openssl.in
+    rm -r $1/tls/.ca
+    rm    $1/tls/.cmd.*
+    rm    $1/tls/.openssl.conf
+    rm    $1/tls/.rand
+}
+
+function Xcreate_certs ()
+{
+    local snmpd_certdir=$1
+    local snmptrapd_certdir=$2
+    local args="--org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email $EPRIME_EMAIL --san DNS:$HOSTNAME"
+    SNMPD_CA=ca.eprime.com
+    SNMPTRAPD_CA=$SNMPD_CA
+
+    trace
+    net-snmp-cert genca   -I -n $SNMPD_CA $args -C $snmpd_certdir > /dev/null
+    net-snmp-cert gencert -I -t rcs_snmpd --cn tsmuser $args --with-ca $SNMPD_CA -C $snmpd_certdir > /dev/null
+    net-snmp-cert gencert -I -t rcs_snmptrapd --cn trapuser $args --with-ca $SNMPD_CA -C $snmpd_certdir > /dev/null
+
+    cleanup_certs $snmpd_certdir
+
+    cp -a $snmpd_certdir $snmptrapd_certdir
+
+    rm    $snmpd_certdir/tls/certs/rcs_snmptrapd.crt
+    rm -r $snmpd_certdir/tls/private/rcs_snmptrapd.key
+
+    rm    $snmptrapd_certdir/tls/certs/rcs_snmpd.crt
+    rm -r $snmptrapd_certdir/tls/private/rcs_snmpd.key
+}
+
+function create_certs ()
+{
+    local snmpd_certdir=$1
+    local snmptrapd_certdir=$2
+    local args="--org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email $EPRIME_EMAIL --san DNS:$HOSTNAME"
+    SNMPD_CA=ca1.eprime.com
+    SNMPTRAPD_CA=ca2.eprime.com
+
+    trace
+    net-snmp-cert genca   -I -n $SNMPD_CA $args -C $snmpd_certdir > /dev/null
+    net-snmp-cert gencert -I -t rcs_snmpd --cn tsmuser $args --with-ca $SNMPD_CA -C $snmpd_certdir > /dev/null
+    cleanup_certs $snmpd_certdir
+
+    net-snmp-cert genca   -I -n $SNMPTRAPD_CA $args -C $snmptrapd_certdir > /dev/null
+    net-snmp-cert gencert -I -t rcs_snmptrapd --cn trapuser $args --with-ca $SNMPTRAPD_CA -C $snmptrapd_certdir > /dev/null
+    cleanup_certs $snmptrapd_certdir
+
+    cp $snmpd_certdir/tls/ca-certs/$SNMPD_CA.crt $snmptrapd_certdir/tls/ca-certs/
+    cp $snmptrapd_certdir/tls/ca-certs/$SNMPTRAPD_CA.crt $snmpd_certdir/tls/ca-certs/
 }
 
 function create_snmptrapd_conf()
 {
-    echo "[snmp] localCert $snmptrapdCert" > $1
-    echo "certSecName 10 $snmpdCert --cn" >> $1
-    echo "authuser log -s tsm tsmuser authpriv" >> $1
+    trace
+    $ECHO "[snmp] localCert $snmptrapd_Cert" > $1
+    $ECHO "[snmp] trustCert $snmptrapd_trustCert" >> $1
+    $ECHO "[snmp] trustCert $snmpd_trustCert" >> $1
+    $ECHO "certSecName 10 $snmpd_Cert --cn" >> $1
+    $ECHO "authuser log -s tsm tsmuser authpriv" >> $1
 }
 
 function create_snmpd_conf()
 {
-    echo 'access group "" any noauth exact all all all' > $1
-    echo "[snmp] localCert $snmpdCert" >> $1
-    echo "[snmp] trustCert $trustCert" >> $1
+    trace
+    $ECHO 'access group "" any noauth exact all all all' > $1
+    $ECHO "[snmp] localCert $snmpd_Cert" >> $1
+    #$ECHO "[snmp] trustCert $snmpd_trustCert" >> $1
+
     # trap
-    echo "trapsess -v 3 -r 0 -t 3 -T their_hostname= dtlsudp:127.0.0.1:10162" >> $1
+    $ECHO "trapsess -v 3 -r 0 -t 3 -T their_hostname= dtlsudp:127.0.0.1:10162" >> $1
     # inform
-    echo "trapsess -Ci -v 3 -r 0 -t 3 -T their_hostname= dtlsudp:127.0.0.1:10162" >> $1
+    $ECHO "trapsess -Ci -v 3 -r 0 -t 3 -T their_hostname= dtlsudp:127.0.0.1:10162" >> $1
 }
 
 function start_snmptrapd()
 {
     #local debug="-DALL -d"
-    
-    export SNMPCONFPATH=$CONFDIR:$SNMPTRAPD_CERTDIR:$OUTDIR
+
+    trace
+    export SNMPCONFPATH=$SNMPTRAPD_CERTDIR:$OUTDIR
     export SNMP_PERSISTENT_DIR=$OUTDIR/persist_snmptrapd
-    snmptrapd $debug -C -c $1 -Lf $OUTDIR/snmptrapd.log dtlsudp:0.0.0.0:10162
+    snmptrapd $debug -C -c $1 -Lf $SNMPTRAPD_LOG dtlsudp:0.0.0.0:10162
 }
 
 function start_snmpd()
 {
     #local debug="-DALL -d"
-    
-    export SNMPCONFPATH=$CONFDIR:$SNMPD_CERTDIR:$OUTDIR
+
+    trace
+    export SNMPCONFPATH=$SNMPD_CERTDIR:$OUTDIR
     export SNMP_PERSISTENT_DIR=$OUTDIR/persist_snmpd
-    snmpd $debug -C -c $1 -Lf $OUTDIR/snmpd.log dtlsudp:0.0.0.0:10161
+    snmpd $debug -C -c $1 -Lf $SNMPD_LOG dtlsudp:0.0.0.0:10161
+}
+
+function stop_snmp()
+{
+    trace
+    sleep 2
+    killall snmpd
+    sleep 1
+    killall snmptrapd
+}
+
+function check_result()
+{
+    local num_of_traps=$(grep coldStart $SNMPTRAPD_LOG | wc -l)
+    local status=0
+
+    trace
+    if [ $num_of_traps != 2 ]; then
+	$RED; $ECHO "\n--- TEST FAILED"; $NORMAL
+	$ECHO "\n--- snmpd.log"
+	cat $SNMPD_LOG
+	$ECHO "\n--- snmptrapd.log"
+	cat $SNMPTRAPD_LOG
+	status=1
+    else
+	$GREEN; $ECHO "\n--- TEST PASSED\n"; $NORMAL
+    fi
+    return $status
 }
 
 # main
 mkdir -p $OUTDIR
 rm -rf $OUTDIR/*
 
-trustCert=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/ca-certs/ca.eprime.com.crt -fingerprint -sha1 | cut -d= -f2)
-snmpdCert=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/certs/rcs_snmpd.crt -fingerprint -sha1 | cut -d= -f2)
-snmptrapdCert=$(openssl x509 -noout -in $SNMPTRAPD_CERTDIR/tls/certs/rcs_snmptrapd.crt -fingerprint -sha1 | cut -d= -f2)
+create_certs $SNMPD_CERTDIR $SNMPTRAPD_CERTDIR
 
-#echo trustCert: $trustCert
-#echo snmpdCert: $snmpdCert
-#echo snmptrapdCert: $snmptrapdCert
+#chmod 600 $SNMPTRAPD_CERTDIR/tls/private/*
+#chmod 600 $SNMPD_CERTDIR/tls/private/*
 
-create_snmptrapd_conf $OUTDIR/snmptrapd.conf
-create_snmpd_conf $OUTDIR/snmpd.conf
-start_snmptrapd $OUTDIR/snmptrapd.conf
-start_snmpd $OUTDIR/snmpd.conf
+snmpd_trustCert=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/ca-certs/$SNMPD_CA.crt -fingerprint -sha1 | cut -d= -f2)
+snmptrapd_trustCert=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/ca-certs/$SNMPTRAPD_CA.crt -fingerprint -sha1 | cut -d= -f2)
+snmpd_Cert=$(openssl x509 -noout -in $SNMPD_CERTDIR/tls/certs/rcs_snmpd.crt -fingerprint -sha1 | cut -d= -f2)
+snmptrapd_Cert=$(openssl x509 -noout -in $SNMPTRAPD_CERTDIR/tls/certs/rcs_snmptrapd.crt -fingerprint -sha1 | cut -d= -f2)
 
-sleep 2
-killall snmpd
-sleep 1
-killall snmptrapd
+$ECHO snmpd_trustCert: $snmpd_trustCert
+$ECHO snmpd_Cert: $snmpd_Cert
+$ECHO snmptrapd_trustCert: $snmpd_trustCert
+$ECHO snmptrapd Cert: $snmptrapd_Cert
 
-#/bin/echo -e "\n --- snmpd.log"
-#cat $OUTDIR/snmpd.log
-/bin/echo -e "\n --- snmptrapd.log"
-cat $OUTDIR/snmptrapd.log
+create_snmptrapd_conf $SNMPTRAPD_CONF
+create_snmpd_conf $SNMPD_CONF
+start_snmptrapd $SNMPTRAPD_CONF $OUTDIR
+start_snmpd $SNMPD_CONF
+
+stop_snmp
+
+check_result
+exit $?
