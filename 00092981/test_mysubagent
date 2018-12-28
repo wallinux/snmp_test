@@ -1,0 +1,118 @@
+#!/bin/bash
+#set -x
+
+if [ $# -lt 1 ]; then
+    TMPDIR=/tmp
+else
+    TMPDIR=$1
+fi
+
+MIB=NET-SNMP-TUTORIAL-MIB::nstAgentSubagentObject.0
+PORT=1161
+SNMPD_LOG=$TMPDIR/snmpd.log
+SNMPD_CONF=$TMPDIR/snmpd.conf
+SNMPD_PID=$TMPDIR/snmpd.pid
+SNMPAGENT_LOG=$TMPDIR/snmpagent.log
+SNMPAGENT_CONF=$TMPDIR/snmpagent.conf
+COREFILEDIR=$(dirname $(realpath $TMPDIR))
+AGENTX_SOCKET=tcp:localhost:1705
+OPT="-v2c -r 6 -t 3 -c public localhost:$PORT"
+SNMP_VER=$(net-snmp-config --version)
+
+##########################################################################
+function snmp_kill
+{
+    killall mysubagent &>/dev/null
+    sleep 1
+    killall snmpd  &>/dev/null
+}
+
+function create_snmpd_conf ()
+{
+    echo "[snmp] logTimestamp 1" >> $SNMPD_CONF
+    # master agentx
+    #    agentXPerms SOCKPERMS [DIRPERMS [USER|UID [GROUP|GID]]]
+    #           Defines the permissions and ownership of the AgentX Unix Domain socket, and the parent directories of this socket.  SOCKPERMS  and  DIRPERMS  must  be  octal  digits  (see
+    #           chmod(1) ). By default this socket will only be accessible to subagents which have the same userid as the agent.
+
+    #    agentXSocket [<transport-specifier>:]<transport-address>[,...]
+    #           defines  the  address the master agent listens at, or the subagent should connect to.  The default is the Unix Domain socket "/var/agentx/master".  Another common alterna-
+    #           tive is tcp:localhost:705.  See the section LISTENING ADDRESSES in the snmpd(8) manual page for more information about the format of addresses.
+
+    #           Note:  Specifying an AgentX socket does not automatically enable AgentX functionality (unlike the '-x' command-line option).
+
+    echo "agentXTimeout 20" >> $SNMPD_CONF
+    echo "agentXRetries 1" >> $SNMPD_CONF
+}
+
+function create_snmpagent_conf ()
+{
+    echo "[snmp] logTimestamp 1" >> $SNMPAGENT_CONF
+    #echo "agentXPingInterval 5"  >> $SNMPAGENT_CONF
+}
+
+function prepare
+{
+    mkdir -p $TMPDIR
+    rm -rf $TMPDIR/*.log
+    rm -rf $TMPDIR/*.conf
+    rm -rf $COREFILEDIR/core.*
+    mkdir -p $HOME/.snmp/mibs
+    cp -f NET-SNMP-TUTORIAL-MIB.txt $HOME/.snmp/mibs
+    export MIBS=+NET-SNMP-TUTORIAL-MIB
+    create_snmpd_conf
+    create_snmpagent_conf
+}
+
+function snmp_start
+{
+    [ "$DEBUG" != "" ] && snmpd_dbg="-d -DALL"
+    [ "$DEBUG" != "" ] && agent_dbg="-d -DALL"
+    [ "$DEBUG_AW" != "" ] && agent_dbg="-Dagentx/subagent,nstAgentSubagentObject,AW"
+    [ "$DEBUG_AW" != "" ] && snmpd_dbg="-Dagentx/master,agentx/config/,sess_process_packet,AW"
+
+    echo "$COREFILEDIR/core.%e.%p" > /proc/sys/kernel/core_pattern
+
+    ulimit -c unlimited
+    snmpd $snmpd_dbg -Lf $SNMPD_LOG -C -c $SNMPD_CONF -p $SNMPD_PID --rwcommunity=public --master=agentx --agentXSocket=$AGENTX_SOCKET udp:$PORT
+    sleep 2
+    if [ "$SNMP_VER" = "5.8" ]; then
+	$TMPDIR/mysubagent -Lf $SNMPAGENT_LOG -C -c $SNMPAGENT_CONF $agent_dbg -x $AGENTX_SOCKET
+    else
+	$TMPDIR/mysubagent -Lf $SNMPAGENT_LOG $agent_dbg -x $AGENTX_SOCKET
+    fi
+    COREFILE=$COREFILEDIR/core.snmpd.$(cat $SNMPD_PID)
+    sleep 5
+}
+
+function core_dumped()
+{
+    echo ------ CORE DUMPED ------
+    echo "bt"   >> $TMPDIR/gdb.cmd
+    echo "quit" >> $TMPDIR/gdb.cmd
+    gdb snmpd $COREFILE -x $TMPDIR/gdb.cmd
+}
+
+##########################################################################
+# main
+
+snmp_kill
+prepare
+snmp_start
+
+snmpget $OPT $MIB
+snmpset $OPT $MIB = 5; snmpget $OPT $MIB
+snmpset $OPT $MIB = 15; snmpget $OPT $MIB
+#snmpwalk $OPT $MIB
+
+sleep 20
+date
+#snmp_kill
+
+if [ -e $COREFILE ]; then
+    core_dumped
+    exit 1
+fi
+
+exit 0
+
