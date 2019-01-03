@@ -7,6 +7,8 @@ else
     TMPDIR=$1
 fi
 
+SNMPENV=$TMPDIR/snmp.env
+
 MIB=NET-SNMP-TUTORIAL-MIB::nstAgentSubagentObject.0
 PORT=1161
 SNMP_CONF=$TMPDIR/snmp.conf
@@ -73,7 +75,9 @@ function prepare
     create_snmpd_conf
     create_snmp_conf
     create_snmpagent_conf
-    export SNMPCONFPATH=$TMPDIR
+    echo "export MIBS=+NET-SNMP-TUTORIAL-MIB" > $SNMPENV
+    echo "export SNMPCONFPATH=$TMPDIR" >> $SNMPENV
+    include $SNMPENV
 }
 
 function snmp_start
@@ -112,19 +116,18 @@ snmp_kill
 prepare
 snmp_start
 
-
 #snmpget $OPT $MIB
 #echo --- snmpset
 #snmpset $OPT $MIB = 5;
 #sleep 5
-echo --- snmpget
+echo --- snmpget $OPT $MIB
 snmpget $OPT $MIB
 #snmpset $OPT $MIB = 15; snmpget $OPT $MIB
 #snmpwalk $OPT $MIB
 
-sleep 20
-echo --- kill
-snmp_kill
+#sleep 10
+#echo --- kill
+#snmp_kill
 
 if [ -e $COREFILE ]; then
     core_dumped
