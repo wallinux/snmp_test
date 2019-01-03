@@ -12,7 +12,7 @@
  * the variable we want to tie an OID to.  The agent will handle all
  * * GET and SET requests to this variable changing it's value as needed.
  */
-static long nstAgentSubagentObject = 0;
+static long nstAgentSubagentObject = 5;
 
 static int test_handler(netsnmp_mib_handler *handler,
                         netsnmp_handler_registration *reginfo,

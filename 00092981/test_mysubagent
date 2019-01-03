@@ -9,14 +9,18 @@ fi
 
 MIB=NET-SNMP-TUTORIAL-MIB::nstAgentSubagentObject.0
 PORT=1161
+SNMP_CONF=$TMPDIR/snmp.conf
+SNMP_LOG=$TMPDIR/snmp.log
 SNMPD_LOG=$TMPDIR/snmpd.log
 SNMPD_CONF=$TMPDIR/snmpd.conf
+SNMPD_TOKENS=snmpd.tokens
 SNMPD_PID=$TMPDIR/snmpd.pid
 SNMPAGENT_LOG=$TMPDIR/snmpagent.log
 SNMPAGENT_CONF=$TMPDIR/snmpagent.conf
 COREFILEDIR=$(dirname $(realpath $TMPDIR))
 AGENTX_SOCKET=tcp:localhost:1705
-OPT="-v2c -r 6 -t 3 -c public localhost:$PORT"
+OPT="-v2c -r 2 -t 3 -c public localhost:$PORT"
+#OPT="-c $SNMP_CONF -Lf $SNMP_LOG -d -Dsess_process_packet -v2c -r 1 -t 2 -c public localhost:$PORT"
 SNMP_VER=$(net-snmp-config --version)
 
 ##########################################################################
@@ -41,8 +45,8 @@ function create_snmpd_conf ()
 
     #           Note:  Specifying an AgentX socket does not automatically enable AgentX functionality (unlike the '-x' command-line option).
 
-    echo "agentXTimeout 20" >> $SNMPD_CONF
-    echo "agentXRetries 1" >> $SNMPD_CONF
+    #echo "agentXTimeout 2" >> $SNMPD_CONF
+    #echo "agentXRetries 2" >> $SNMPD_CONF
 }
 
 function create_snmpagent_conf ()
@@ -50,6 +54,12 @@ function create_snmpagent_conf ()
     echo "[snmp] logTimestamp 1" >> $SNMPAGENT_CONF
     #echo "agentXPingInterval 5"  >> $SNMPAGENT_CONF
 }
+
+function create_snmp_conf ()
+{
+    echo "logTimestamp 1" >> $SNMP_CONF
+}
+
 
 function prepare
 {
@@ -61,19 +71,21 @@ function prepare
     cp -f NET-SNMP-TUTORIAL-MIB.txt $HOME/.snmp/mibs
     export MIBS=+NET-SNMP-TUTORIAL-MIB
     create_snmpd_conf
+    create_snmp_conf
     create_snmpagent_conf
+    export SNMPCONFPATH=$TMPDIR
 }
 
 function snmp_start
 {
-    [ "$DEBUG" != "" ] && snmpd_dbg="-d -DALL"
-    [ "$DEBUG" != "" ] && agent_dbg="-d -DALL"
-    [ "$DEBUG_AW" != "" ] && agent_dbg="-Dagentx/subagent,nstAgentSubagentObject,AW"
-    [ "$DEBUG_AW" != "" ] && snmpd_dbg="-Dagentx/master,agentx/config/,sess_process_packet,AW"
+    [ "$DEBUG" = "yes" ] && snmpd_dbg="-d -DALL"
+    [ "$DEBUG" = "yes" ] && agent_dbg="-d -DALL"
+    [ "$DEBUG_AW" = "yes" ] && agent_dbg="-d -Dagentx/subagent,nstAgentSubagentObject,AW"
+    [ "$DEBUG_AW" = "yes" ] && snmpd_dbg="-Dagentx/master,agentx/config/,sess_process_packet,AW,sess_read,snmp_agent,agent_set,handler:calling,handler:returned,agentx_build,agent_set"    
 
     echo "$COREFILEDIR/core.%e.%p" > /proc/sys/kernel/core_pattern
-
     ulimit -c unlimited
+    #snmpd $snmpd_dbg -Lf $SNMPD_LOG -C -c $SNMPD_CONF,$SNMPD_TOKENS -p $SNMPD_PID --rwcommunity=public --master=agentx --agentXSocket=$AGENTX_SOCKET udp:$PORT
     snmpd $snmpd_dbg -Lf $SNMPD_LOG -C -c $SNMPD_CONF -p $SNMPD_PID --rwcommunity=public --master=agentx --agentXSocket=$AGENTX_SOCKET udp:$PORT
     sleep 2
     if [ "$SNMP_VER" = "5.8" ]; then
@@ -100,14 +112,19 @@ snmp_kill
 prepare
 snmp_start
 
+
+#snmpget $OPT $MIB
+#echo --- snmpset
+#snmpset $OPT $MIB = 5;
+#sleep 5
+echo --- snmpget
 snmpget $OPT $MIB
-snmpset $OPT $MIB = 5; snmpget $OPT $MIB
-snmpset $OPT $MIB = 15; snmpget $OPT $MIB
+#snmpset $OPT $MIB = 15; snmpget $OPT $MIB
 #snmpwalk $OPT $MIB
 
 sleep 20
-date
-#snmp_kill
+echo --- kill
+snmp_kill
 
 if [ -e $COREFILE ]; then
     core_dumped
