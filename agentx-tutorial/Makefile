@@ -27,10 +27,19 @@ AGENT = agentxTutorial
 
 all: $(AGENT) prepare
 	$(MAKE) restart
+	$(Q)sleep 5
+#	$(KILLALL) snmptrapd
 	$(Q)cat $(TMP)/snmptrapd.log
 
 $(AGENT):
 	$(MAKE) -f $@_Makefile
+
+$(AGENT).clean:
+	$(MAKE) -f $(AGENT)_Makefile clean
+
+rebuild:
+	$(MAKE) $(AGENT).clean
+	$(MAKE) $(AGENT)
 
 $(TMP):
 	$(Q)mkdir -p $@
@@ -43,25 +52,31 @@ $(TMP)/snmp.env: | $(TMP)
 $(HOME)/.snmp/mibs/$(MIB): $(MIB)
 	$(CP) -f $< $@
 
-$(TMP)/snmpd.conf: | $(TMP)
+$(TMP)/snmpd.conf: Makefile | $(TMP)
 	$(ECHO) "rwcommunity public" > $@
 	$(ECHO) "master agentx" >> $@
-	$(ECHO) "trap2sink localhost public" >> $@
+#	$(ECHO) "trap2sink localhost public" >> $@
+	$(ECHO) "informsink localhost public" >> $@
 
-$(TMP)/snmptrapd.conf: | $(TMP)
+$(TMP)/snmptrapd.conf: Makefile | $(TMP)
 	$(ECHO) "authCommunity log public" > $@
 
 prepare: $(HOME)/.snmp/mibs/$(MIB) $(TMP)/snmp.env $(TMP)/snmpd.conf $(TMP)/snmptrapd.conf
+	$(ECHO) "$(TMP)/core.%e.%p" > /proc/sys/kernel/core_pattern
+	$(RM) $(TMP)/core.*.*
 
-snmpd_dbg="-Dagentx/master,agentx/config/,sess_process_packet,AW,sess_read,snmp_agent,agent_set,handler:calling,handler:returned,agentx_build,agent_set"
+snmpd_dbg = -d -Dagentx/master,agentx/config/,sess_process_packet,AW,AW1,sess_read,snmp_agent,agent_set,handler:calling,handler:returned,agentx_build,agent_set,trap,sess_async_send,snmp_synch,snmp_api
+#snmpd_dbg = -d -DALL
 snmpd.start: $(TMP)/snmpd.conf
-	$(Q)snmpd $(anmpd_dbg) -Lf $(TMP)/snmpd.log -C -c $< udp:161
+	$(Q)snmpd $(snmpd_dbg) -Lf $(TMP)/snmpd.log -C -c $< udp:161
 
 snmptrapd.start: $(TMP)/snmptrapd.conf
 	$(Q)snmptrapd -Lf $(TMP)/snmptrapd.log -C -c $<
 
+#agent_debug = -D$(AGENT),snmpd/main,agentx/subagent
+agent_debug = -DALL
 agent.start: $(AGENT)
-	$(Q)$(TOP)/$< -D$(AGENT),snmpd/main 2> $(TMP)/agent.log &
+	$(Q)$(TOP)/$< $(agent_debug) 2> $(TMP)/agent.log &
 
 start:
 	$(MAKE) snmptrapd.start
@@ -83,7 +98,6 @@ snmpwalk:
 translate: prepare
 	$(Q)snmptranslate -Tp -IR $(AGENT)
 
-clean: stop
-	$(MAKE) -f agentxTutorial_Makefile clean
+clean: stop $(AGENT).clean
 	$(RM) -r $(TMP)
 	$(RM) *~ \#*\#

@@ -23,7 +23,8 @@ send_myROIntHit_trap(int ValueForAlerting)
     const oid myROInteger_oid[] = { 1,3,6,1,3,9999,1,2, 0 };
 
     DEBUGMSGTL(("agentxTutorial", "send_myROIntHit_trap %i\n", ValueForAlerting));
-    
+    //    sleep(10);
+    //DEBUGMSGTL(("agentxTutorial", "send_myROIntHit_trap wakeup\n"));
     /*
      * Set the snmpTrapOid.0 value
      */
