@@ -77,7 +77,7 @@ function prepare
     create_snmpagent_conf
     echo "export MIBS=+NET-SNMP-TUTORIAL-MIB" > $SNMPENV
     echo "export SNMPCONFPATH=$TMPDIR" >> $SNMPENV
-    include $SNMPENV
+    source $SNMPENV
 }
 
 function snmp_start
