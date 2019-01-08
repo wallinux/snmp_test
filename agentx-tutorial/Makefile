@@ -1,4 +1,3 @@
-
 # Define V=1 to echo everything
 V	?= 0
 ifneq ($(V),1)
@@ -14,52 +13,59 @@ RM		= $(Q)rm -f
 CP		= $(Q)cp
 CC		= $(Q)gcc $(CFLAGS)
 KILL		= $(Q)kill
-KILLALL		= $(Q)killall
+KILLALL		= $(Q)killall -w
+SLEEP		= $(Q)sleep
 
 MIB		= AGENTX-TUTORIAL-MIB
-TOP		= $(shell pwd)
-TMP		= $(TOP)/tmp
-
-AGENT		= agentxTutorial
+TMP		= $(PWD)/tmp/$(shell hostname)
+AGENTX		= agentxTutorial
 
 SNMP_ENV	= $(TMP)/snmp.env
 
+AGENTX_CONF	= $(TMP)/$(AGENTX).conf
 SNMP_CONF	= $(TMP)/snmp.conf
 SNMPD_CONF	= $(TMP)/snmpd.conf
 SNMPTRAPD_CONF	= $(TMP)/snmptrapd.conf
 
-AGENT_LOG	= $(TMP)/agent.log
+AGENTX_LOG	= $(TMP)/agentx.log
 SNMPD_LOG	= $(TMP)/snmpd.log
 SNMPTRAPD_LOG	= $(TMP)/snmptrapd.log
 
-AGENT_PID	= $(TMP)/agent.pid
+AGENTX_PID	= $(TMP)/agentx.pid
 SNMPD_PID	= $(TMP)/snmpd.pid
 SNMPTRAPD_PID	= $(TMP)/snmptrapd.pid
 
 -include $(SNMP_ENV)
 
-.PHONY: config prepare start stop restart test agent.start
+.PHONY: config prepare start stop restart test agentx.start
 
-all: $(AGENT) prepare
+all: $(AGENTX) prepare
 	$(MAKE) restart
-	$(Q)sleep 5
+	$(SLEEP) 12
 #	$(MAKE) snmptrapd.stop
-	$(Q)cat $(SNMPTRAPD_LOG)
-
-$(AGENT):
-	$(MAKE) -f $@_Makefile
-
-$(AGENT).clean:
-	$(MAKE) -f $(AGENT)_Makefile clean
-
-rebuild:
-	$(MAKE) $(AGENT).clean
-	$(MAKE) $(AGENT)
+	$(MAKE) snmptrapd.start
+	$(SLEEP) 4
+	$(Q)if [ -f $(SNMPTRAPD_LOG) ]; then \
+		cat $(SNMPTRAPD_LOG); \
+	fi
 
 $(TMP):
 	$(Q)mkdir -p $@
 
+$(AGENTX):
+	$(MAKE) -f $@_Makefile
 
+$(AGENTX).clean:
+	$(MAKE) -f $(AGENTX)_Makefile clean
+
+$(TMP)/$(AGENTX): $(AGENTX)
+	$(Q)mv $< $@
+
+build:
+	$(MAKE) $(AGENTX).clean
+	$(MAKE) $(AGENTX)
+
+########################################################################
 $(SNMP_ENV): | $(TMP)
 	$(ECHO) export MIBS="+$(MIB)" > $@
 	$(ECHO) "export SNMPCONFPATH=$(TMP)" >> $@
@@ -68,8 +74,13 @@ $(SNMP_ENV): | $(TMP)
 $(HOME)/.snmp/mibs/$(MIB): $(MIB)
 	$(CP) -f $< $@
 
+$(AGENTX_CONF):
+	$(ECHO) "[snmp] logTimestamp 1" > $@
+
+
 $(SNMP_CONF): Makefile | $(TMP)
 	$(ECHO) "defcommunity public" > $@
+	$(ECHO) "dumpPacket yes" >> $@
 
 $(SNMPD_CONF): Makefile | $(TMP)
 	$(ECHO) "[snmp] logTimestamp 1" > $@
@@ -83,9 +94,9 @@ $(SNMPD_CONF): Makefile | $(TMP)
 #	$(ECHO) "informsink localhost public" >> $@
 #	$(ECHO) "# v3 - trap" >> $@
 #	$(ECHO) "oldEngineID 0x80001f8880523983647b8b0355" >> $@
-#	$(ECHO) "trapsess     -v 3 -r 3 -t 3 -e 0x80001f8880523983647b8b0355 -a MD5 -A trap1234 -x DES -X trap1234 -l authNoPriv -u trapuser localhost" >> $@
+#	$(ECHO) "trapsess     -v 3 -r 2 -t 6 -e 0x80001f8880523983647b8b0355 -a MD5 -A trap1234 -x DES -X trap1234 -l authNoPriv -u trapuser localhost" >> $@
 	$(ECHO) "# v3 - inform" >> $@
-	$(ECHO) "trapsess -Ci -v 3 -r 3 -t 10 -a MD5 -A trap1234 -x DES -X trap1234 -l authNoPriv -u trapuser localhost" >> $@
+	$(ECHO) "trapsess -Ci -v 3 -r 2 -t 4 -a MD5 -A trap1234 -x DES -X trap1234 -l authNoPriv -u trapuser localhost" >> $@
 
 $(SNMPTRAPD_CONF): Makefile | $(TMP)
 	$(ECHO) "[snmp] logTimestamp 0" > $@
@@ -93,14 +104,14 @@ $(SNMPTRAPD_CONF): Makefile | $(TMP)
 	$(ECHO) 'createUser trapuser MD5 "trap1234" DES "trap1234"' >> $@
 	$(ECHO) "authUser log trapuser" >> $@
 
-config: $(SNMP_ENV) $(SNMPD_CONF) $(SNMPTRAPD_CONF) $(SNMP_CONF)
+config: $(SNMP_ENV) $(SNMPD_CONF) $(SNMPTRAPD_CONF) $(SNMP_CONF) $(AGENTX_CONF)
 prepare: $(HOME)/.snmp/mibs/$(MIB) config
 	$(ECHO) "$(TMP)/core.%e.%p" > /proc/sys/kernel/core_pattern
 	$(RM) $(TMP)/core.*.*
 
 ########################################################################
 #SNMPD_DBG	= -d -DALL
-SNMPD_DBG	= -d -Dagentx/master,agentx/config/,sess_process_packet,AW,AW1,sess_read,snmp_agent,agent_set,handler:calling,handler:returned,agentx_build,agent_set,trap,sess_async_send,snmp_synch,snmp_api
+SNMPD_DBG	= -d -Dagentx/master,agentx/config/,sess_process_packet,AW,AW1,sess_read,snmp_agent,agent_set,handler:calling,handler:returned,agentx_build,agent_set,trap,sess_async_send,snmp_synch,snmp_api,signal
 snmpd.start: $(SNMPD_CONF)
 	$(Q)snmpd $(SNMPD_DBG) -Lf $(SNMPD_LOG) -C -c $< udp:161
 
@@ -111,42 +122,48 @@ snmptrapd.start: $(SNMPTRAPD_CONF)
 		snmptrapd $(SNMPTRAPD_DEBUG) -Lf $(SNMPTRAPD_LOG) -p $(SNMPTRAPD_PID) -C -c $<; \
 	fi
 
+#AGENTX_DEBUG	= -DALL
+AGENTX_DEBUG	= -D$(AGENTX),snmpd/main,agentx/subagent,signal
+agentx.start: $(TMP)/$(AGENTX)
+	$(Q)$(TOP)/$< $(AGENTX_DEBUG) 2> $(AGENTX_LOG) &
+
+start:
+#	$(MAKE) snmptrapd.start
+	$(MAKE) agentx.start
+	$(MAKE) snmpd.start
+
+########################################################################
 snmptrapd.stop:
 	$(Q)if [ -f $(SNMPTRAPD_PID) ]; then \
 		kill $$(cat $(SNMPTRAPD_PID)); \
 	fi
 	$(RM) $(SNMPTRAPD_PID)
 
-#AGENT_DEBUG	= -DALL
-AGENT_DEBUG	= -D$(AGENT),snmpd/main,agentx/subagent
-agent.start: $(AGENT)
-	$(Q)$(TOP)/$< $(AGENT_DEBUG) 2> $(AGENT_LOG) &
-
-start:
-	$(MAKE) snmptrapd.start
-	$(MAKE) snmpd.start
-	$(MAKE) agent.start
-
-########################################################################
 stop:
 #	$(MAKE) snmptrapd.stop
-	$(KILLALL) $(AGENT)  > /dev/null || true
 	$(KILLALL) snmpd  > /dev/null  || true
+	$(KILLALL) $(AGENTX)  > /dev/null || true
+
+
+stop.force:
+	$(KILLALL) -9 snmptrapd || true
+	$(RM) $(SNMPTRAPD_PID)
+	$(KILLALL) -9 $(AGENTX) || true
+	$(KILLALL) -9 snmpd || true
 
 restart:
 	$(MAKE) stop
 	$(MAKE) start
 
 snmpwalk walk:
-	$(Q)snmpwalk -v2c -c public localhost $(AGENT)
+	$(Q)snmpwalk -v2c -c public localhost $(AGENTX)
 
 translate: prepare
-	$(Q)snmptranslate -Tp -IR $(AGENT)
+	$(Q)snmptranslate -Tp -IR $(AGENTX)
 
-clean: stop $(AGENT).clean
+clean: stop $(AGENTX).clean
 	$(MAKE) snmptrapd.stop
 	$(RM) -r $(TMP)
 	$(RM) *~ \#*\#
 
 distclean: clean
-

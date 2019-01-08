@@ -51,7 +51,7 @@ void AlrmHandler(int signo) {
      * */
     snprintf(myROStringVar, sizeof(myROStringVar)-1, "last changed = %ld", time(0));
     myROIntegerVar++;
-    if (myROIntegerVar % 5 == 1) send_myROIntHit_trap(myROIntegerVar);
+    if (myROIntegerVar % 2 == 1) send_myROIntHit_trap(myROIntegerVar);
     alarm(5);
 }
 
