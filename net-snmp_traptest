@@ -262,7 +262,7 @@ function create_snmpd_conf ()
     echo "certSecName 10 $appCert --cn" >> $conf
     echo "rwuser -s tsm $APP_USER authpriv" >> $conf
     echo "trapcommunity public" >> $conf
-    echo "[snmp] $LOGTIMESTAMP" >> $conf
+    echo -e "[snmp] $LOGTIMESTAMP\n" >> $conf
 
     if [ $SNMP_PROTOCOL = "2c" ]; then
 	[ "$IPv4" = "yes" ] && echo "trap2sink udp:$host_ipv4:$SNMPTRAPD_PORT" >> $conf
@@ -275,7 +275,7 @@ function create_snmpd_conf ()
 	    if [ "$TLS_TYPE" = "peer" ]; then
 		$TRACE "peer"
 		local tls_options="-T peerCert=$trapdCert"
-		echo "[snmp] peerCert $trapdCert" >> $conf
+		echo -e "\n[snmp] peerCert $trapdCert" >> $conf
 	    else
 		$TRACE "trust"
 		local tls_options="-T trust_cert=$caCert -T their_hostname=$HOSTNAME"
