@@ -2,7 +2,7 @@
 
 DISTRO			?= ubuntu
 DISTRO_TAG		?= 16.04
-DISTRO_TAGS		?= 16.04 18.04
+DISTRO_TAGS		?= 16.04 18.10
 export DISTRO_NAME	= $(DISTRO)_$(DISTRO_TAG)
 
 SNMP_REGISTRY_SERVER	= $(DOCKER_ID_USER)
@@ -48,7 +48,11 @@ snmp.build.%: snmp.build.$(DISTRO_NAME).latest
 	$(ECHO) "MAINTAINER Anders Wallin" >> $(dockerfile)
 	$(ECHO) "RUN (cd net-snmp; git fetch --all; git checkout -b $* wayline/$*)" >> $(dockerfile)
 	$(ECHO) 'RUN [ "/bin/bash", "-c", "/root/build &> /root/build.out" ]' >> $(dockerfile)
+ifeq ($(V),1)
+	$(DOCKER) build -f $(dockerfile) -t "snmp_$(DISTRO_NAME):$*" .
+else
 	$(DOCKER) build -q -f $(dockerfile) -t "snmp_$(DISTRO_NAME):$*" .
+endif
 	$(RM) $(dockerfile)
 	$(MAKE) snmp.tag SNMP_IMAGE=snmp_$(DISTRO_NAME):$*
 
@@ -149,7 +153,7 @@ snmp.rmi: # Remove snmp image
 
 snmp.RMI: # Remove ALL snmp images
 	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.rmi SNMP_TAG=$(tag); )
-	$(MAKE) snmp.rmi SNMP_TAG=$(DISTRO_NAME).latest
+	$(MAKE) snmp.rmi SNMP_TAG=latest
 
 snmp.remote.rmi: snmp.rm # Remove downloaded snmp image
 	$(TRACE)
@@ -157,7 +161,7 @@ snmp.remote.rmi: snmp.rm # Remove downloaded snmp image
 
 snmp.remote.RMI: # Remove ALL remote snmp images
 	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.remote.rmi SNMP_TAG=$(tag); )
-	$(MAKE) snmp.rmi SNMP_TAG=$(DISTRO_NAME).latest
+	$(MAKE) snmp.rmi SNMP_TAG=latest
 
 snmp.shell.%:
 	$(TRACE)
@@ -203,6 +207,8 @@ snmp.help:
 
 help:: snmp.help
 	$(GREEN)
-	$(ECHO) -e "\nDISTRO_NAME=$(DISTRO_NAME)"
-	$(ECHO) -e "Set SNMP_TAG(default=$(SNMP_TAG)) to run container, available SNMP_TAGS=<$(SNMP_TAGS)>"
+	$(ECHO) -e "\n-----------------------"
+	$(ECHO) -e "DISTRO=$(DISTRO)"
+	$(ECHO) -e "DISTRO_TAG=$(DISTRO_TAG), available DISTRO_TAGS=<$(DISTRO_TAGS)>"
+	$(ECHO) -e "SNMP_TAG=$(SNMP_TAG), available SNMP_TAGS=<$(SNMP_TAGS)>"
 	$(NORMAL)
