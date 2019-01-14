@@ -6,6 +6,8 @@ if [ $# -lt 1 ]; then
 else
     TMPDIR=$1
 fi
+[ "$COUNT" = "" ] && COUNT=10
+[ "$TIMEOUT" = "" ] && TIMEOUT=5
 
 SNMPENV=$TMPDIR/snmp.env
 
@@ -17,8 +19,8 @@ SNMPD_LOG=$TMPDIR/snmpd.log
 SNMPD_CONF=$TMPDIR/snmpd.conf
 SNMPD_TOKENS=snmpd.tokens
 SNMPD_PID=$TMPDIR/snmpd.pid
-SNMPAGENT_LOG=$TMPDIR/snmpagent.log
-SNMPAGENT_CONF=$TMPDIR/snmpagent.conf
+SNMPAGENT_LOG=$TMPDIR/agentx.log
+SNMPAGENT_CONF=$TMPDIR/agentx.conf
 COREFILEDIR=$(dirname $(realpath $TMPDIR))
 AGENTX_SOCKET=tcp:localhost:1705
 OPT="-v2c -r 2 -t 3 -c public localhost:$PORT"
@@ -84,16 +86,16 @@ function snmp_start
 {
     [ "$DEBUG" = "yes" ] && snmpd_dbg="-d -DALL"
     [ "$DEBUG" = "yes" ] && agent_dbg="-d -DALL"
-    [ "$DEBUG_AW" = "yes" ] && agent_dbg="-d -Dagentx/subagent,nstAgentSubagentObject,AW"
-    [ "$DEBUG_AW" = "yes" ] && snmpd_dbg="-Dagentx/master,agentx/config/,sess_process_packet,AW,sess_read,snmp_agent,agent_set,handler:calling,handler:returned,agentx_build,agent_set"    
+    [ "$DEBUG_AW" = "yes" ] && agent_dbg="-d -Dagentx,nstAgentSubagentObject,AW"
+    [ "$DEBUG_AW" = "yes" ] && snmpd_dbg="-Dagentx,sess_process_packet,AW,sess_read,snmp_agent,agent_set,handler:calling,handler:returned,helper:cache_handler,cache_timer"
 
     echo "$COREFILEDIR/core.%e.%p" > /proc/sys/kernel/core_pattern
     ulimit -c unlimited
-    #snmpd $snmpd_dbg -Lf $SNMPD_LOG -C -c $SNMPD_CONF,$SNMPD_TOKENS -p $SNMPD_PID --rwcommunity=public --master=agentx --agentXSocket=$AGENTX_SOCKET udp:$PORT
-    snmpd $snmpd_dbg -Lf $SNMPD_LOG -C -c $SNMPD_CONF -p $SNMPD_PID --rwcommunity=public --master=agentx --agentXSocket=$AGENTX_SOCKET udp:$PORT
+    #snmpd -Lf $SNMPD_LOG $snmpd_dbg  -C -c $SNMPD_CONF,$SNMPD_TOKENS -p $SNMPD_PID --rwcommunity=public --master=agentx --agentXSocket=$AGENTX_SOCKET udp:$PORT
+    snmpd -Lf $SNMPD_LOG $snmpd_dbg -C -c $SNMPD_CONF -p $SNMPD_PID --rwcommunity=public --master=agentx --agentXSocket=$AGENTX_SOCKET udp:$PORT
     sleep 2
     if [ "$SNMP_VER" = "5.8" ]; then
-	$TMPDIR/mysubagent -Lf $SNMPAGENT_LOG -C -c $SNMPAGENT_CONF $agent_dbg -x $AGENTX_SOCKET
+	$TMPDIR/mysubagent -Lf $SNMPAGENT_LOG $agent_dbg -C -c $SNMPAGENT_CONF -x $AGENTX_SOCKET
     else
 	$TMPDIR/mysubagent -Lf $SNMPAGENT_LOG $agent_dbg -x $AGENTX_SOCKET
     fi
@@ -119,11 +121,19 @@ snmp_start
 #snmpget $OPT $MIB
 #echo --- snmpset
 #snmpset $OPT $MIB = 5;
-#sleep 5
+snmpset $OPT $MIB = $TIMEOUT;
+sleep 5
+for i in $(seq 1 $COUNT); do
+	 echo --- $i: snmpget $OPT $MIB
+	 snmpget $OPT $MIB &
+done
+
+exit
+
+echo --- snmpset $OPT $MIB = 1
+snmpset $OPT $MIB = 0;
 echo --- snmpget $OPT $MIB
 snmpget $OPT $MIB
-#snmpset $OPT $MIB = 15; snmpget $OPT $MIB
-#snmpwalk $OPT $MIB
 
 #sleep 10
 #echo --- kill

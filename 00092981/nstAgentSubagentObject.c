@@ -3,6 +3,9 @@
  *        : mib2c.int_watch.conf,v 5.0 2002/04/20 07:30:13 hardaker Exp $
  */
 
+#include <unistd.h>
+#include <sys/syscall.h>
+
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
@@ -12,20 +15,47 @@
  * the variable we want to tie an OID to.  The agent will handle all
  * * GET and SET requests to this variable changing it's value as needed.
  */
-static long nstAgentSubagentObject = 5;
+static long nstAgentSubagentObject = 6;
+
+int gettid(void)
+{
+        return (int) syscall(SYS_gettid);
+}
+
+
+#define uSEC 1
+#define mSEC (1000 * uSEC)
+#define  SEC (1000 * mSEC)
+static void handle_get_mode(void)
+{
+        long int sleeptime;
+
+        if (nstAgentSubagentObject == 10) {
+                /* use random time */
+                sleeptime = (rand() % 1000 + 1) * mSEC;
+        } else
+                sleeptime = nstAgentSubagentObject * SEC;
+
+
+        DEBUGMSGTL(("nstAgentSubagentObject", "[%i]: start sleeping=%li\n",
+                    gettid(), sleeptime));
+
+        usleep(sleeptime);
+        DEBUGMSGTL(("nstAgentSubagentObject", "[%i]: wakeup\n", gettid()));
+}
 
 static int test_handler(netsnmp_mib_handler *handler,
                         netsnmp_handler_registration *reginfo,
                         netsnmp_agent_request_info *reqinfo,
                         netsnmp_request_info *requests)
 {
-        int sleeptime = nstAgentSubagentObject;
-
         DEBUGMSGTL(("nstAgentSubagentObject", "mode=%i\n", reqinfo->mode));
         if (reqinfo->mode == MODE_GET) {
-                DEBUGMSGTL(("nstAgentSubagentObject", "start sleeping=%i\n", sleeptime));
-                sleep(sleeptime);
-                DEBUGMSGTL(("nstAgentSubagentObject", "wakeup\n"));
+                if (nstAgentSubagentObject == 20) {
+                        DEBUGMSGTL(("nstAgentSubagentObject", "returning GENERR\n"));
+                        return SNMP_ERR_GENERR;
+                } else
+                        handle_get_mode();
         }
         return SNMP_ERR_NOERROR;
 }
@@ -37,34 +67,17 @@ static int test_handler(netsnmp_mib_handler *handler,
 
 void init_nstAgentSubagentObject(void)
 {
-    static oid nstAgentSubagentObject_oid[] ={ 1, 3, 6, 1, 4, 1, 8072, 2, 4, 1, 1, 2, 0 };
+        static oid nstAgentSubagentObject_oid[] ={ 1, 3, 6, 1, 4, 1, 8072, 2, 4, 1, 1, 2, 0 };
 
-    /*
-     * a debugging statement.  Run the agent with -DnstAgentSubagentObject to see
-     * the output of this debugging statement.
-     */
-    DEBUGMSGTL(("nstAgentSubagentObject", "Initializing the nstAgentSubagentObject module\n"));
+        DEBUGMSGTL(("nstAgentSubagentObject", "Initializing the nstAgentSubagentObject module\n"));
+        DEBUGMSGTL(("nstAgentSubagentObject",
+                    "Initalizing nstAgentSubagentObject scalar integer.  Default value = %li\n",
+                    nstAgentSubagentObject));
 
-    /*
-     * the line below registers our variables defined above as
-     * accessible and makes it writable.  A read only version of any
-     * of these registration would merely call
-     * register_read_only_long_instance() instead.  The functions
-     * called below should be consistent with your MIB, however.
-     *
-     * If we wanted a callback when the value was retrieved or set
-     * (even though the details of doing this are handled for you),
-     * you could change the NULL pointer below to a valid handler
-     * function.
-     */
-    DEBUGMSGTL(("nstAgentSubagentObject",
-		"Initalizing nstAgentSubagentObject scalar integer.  Default value = %li\n",
-		nstAgentSubagentObject));
+        netsnmp_register_long_instance("nstAgentSubagentObject",
+                                       nstAgentSubagentObject_oid,
+                                       OID_LENGTH(nstAgentSubagentObject_oid),
+                                       &nstAgentSubagentObject, test_handler);
 
-    netsnmp_register_long_instance("nstAgentSubagentObject",
-				  nstAgentSubagentObject_oid,
-				  OID_LENGTH(nstAgentSubagentObject_oid),
-				  &nstAgentSubagentObject, test_handler);
-
-    DEBUGMSGTL(("nstAgentSubagentObject", "Done initalizing nstAgentSubagentObject module\n"));
+        DEBUGMSGTL(("nstAgentSubagentObject", "Done initalizing nstAgentSubagentObject module\n"));
 }
