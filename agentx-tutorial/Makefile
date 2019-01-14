@@ -119,13 +119,13 @@ snmpd.start: $(SNMPD_CONF)
 SNMPTRAPD_DBG	= -d -Dsess_process_packet,AW,AW1,sess_read,snmp_synch,snmp_api
 snmptrapd.start: $(SNMPTRAPD_CONF)
 	$(Q)if [ ! -f $(SNMPTRAPD_PID) ]; then \
-		snmptrapd $(SNMPTRAPD_DEBUG) -Lf $(SNMPTRAPD_LOG) -p $(SNMPTRAPD_PID) -C -c $<; \
+		snmptrapd $(SNMPTRAPD_DBG) -Lf $(SNMPTRAPD_LOG) -p $(SNMPTRAPD_PID) -C -c $<; \
 	fi
 
-#AGENTX_DEBUG	= -DALL
-AGENTX_DEBUG	= -D$(AGENTX),snmpd/main,agentx/subagent,signal
+#AGENTX_DBG	= -DALL
+AGENTX_DBG	= -D$(AGENTX),snmpd/main,agentx/subagent,signal
 agentx.start: $(TMP)/$(AGENTX)
-	$(Q)$(TOP)/$< $(AGENTX_DEBUG) 2> $(AGENTX_LOG) &
+	$(Q)$(TOP)/$< $(AGENTX_DBG) 2> $(AGENTX_LOG) &
 
 start:
 #	$(MAKE) snmptrapd.start
