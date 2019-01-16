@@ -13,18 +13,27 @@ SNMPENV=$TMPDIR/snmp.env
 
 MIB=NET-SNMP-TUTORIAL-MIB::nstAgentSubagentObject.0
 PORT=1161
+
 SNMP_CONF=$TMPDIR/snmp.conf
-SNMP_LOG=$TMPDIR/snmp.log
+
+SNMPGET_LOG=$TMPDIR/snmpget.log
+SNMPSET_LOG=$TMPDIR/snmpset.log
+
 SNMPD_LOG=$TMPDIR/snmpd.log
 SNMPD_CONF=$TMPDIR/snmpd.conf
 SNMPD_TOKENS=snmpd.tokens
 SNMPD_PID=$TMPDIR/snmpd.pid
+
 SNMPAGENT_LOG=$TMPDIR/agentx.log
 SNMPAGENT_CONF=$TMPDIR/agentx.conf
+
 COREFILEDIR=$(dirname $(realpath $TMPDIR))
 AGENTX_SOCKET=tcp:localhost:1705
-OPT="-v2c -r 2 -t 3 -c public localhost:$PORT"
-#OPT="-c $SNMP_CONF -Lf $SNMP_LOG -d -Dsess_process_packet -v2c -r 1 -t 2 -c public localhost:$PORT"
+
+SNMP_DEBUG="-d -Dsess_process_packet"
+#SNMP_OPT="$SNMP_DEBUG -v2c -r2 -t3 localhost:$PORT"
+SNMP_OPT="$SNMP_DEBUG -v3 -r2 -t3 -a MD5 -A password -l authNoPriv -u usmuser localhost:$PORT"
+
 SNMP_VER=$(net-snmp-config --version)
 
 ##########################################################################
@@ -37,7 +46,7 @@ function snmp_kill
 
 function create_snmpd_conf ()
 {
-    echo "[snmp] logTimestamp 1" >> $SNMPD_CONF
+    echo "[snmp] logTimestamp 1" > $SNMPD_CONF
     # master agentx
     #    agentXPerms SOCKPERMS [DIRPERMS [USER|UID [GROUP|GID]]]
     #           Defines the permissions and ownership of the AgentX Unix Domain socket, and the parent directories of this socket.  SOCKPERMS  and  DIRPERMS  must  be  octal  digits  (see
@@ -51,17 +60,21 @@ function create_snmpd_conf ()
 
     #echo "agentXTimeout 2" >> $SNMPD_CONF
     #echo "agentXRetries 2" >> $SNMPD_CONF
+
+    echo "createUser usmuser MD5 password AES password" >> $SNMPD_CONF
+    echo "rwuser usmuser"  >> $SNMPD_CONF
 }
 
 function create_snmpagent_conf ()
 {
-    echo "[snmp] logTimestamp 1" >> $SNMPAGENT_CONF
+    echo "[snmp] logTimestamp 1" > $SNMPAGENT_CONF
     #echo "agentXPingInterval 5"  >> $SNMPAGENT_CONF
 }
 
 function create_snmp_conf ()
 {
-    echo "logTimestamp 1" >> $SNMP_CONF
+    echo "logTimestamp 1" > $SNMP_CONF
+    echo "defCommunity public" >> $SNMP_CONF
 }
 
 
@@ -87,7 +100,8 @@ function snmp_start
     [ "$DEBUG" = "yes" ] && snmpd_dbg="-d -DALL"
     [ "$DEBUG" = "yes" ] && agent_dbg="-d -DALL"
     [ "$DEBUG_AW" = "yes" ] && agent_dbg="-d -Dagentx,nstAgentSubagentObject,AW"
-    [ "$DEBUG_AW" = "yes" ] && snmpd_dbg="-Dagentx,sess_process_packet,AW,sess_read,snmp_agent,agent_set,handler:calling,handler:returned,helper:cache_handler,cache_timer"
+    [ "$DEBUG_AW" = "yes" ] && snmpd_dbg="-d -Dagentx,sess_process_packet,AW,BT,sess_read,snmp_agent,agent_set,handler:calling,handler:returned,helper:cache_handler,cache_timer"
+#    [ "$DEBUG_AW" = "yes" ] && snmpd_dbg="-d -DALL"
 
     echo "$COREFILEDIR/core.%e.%p" > /proc/sys/kernel/core_pattern
     ulimit -c unlimited
@@ -118,24 +132,15 @@ snmp_kill
 prepare
 snmp_start
 
-#snmpget $OPT $MIB
-#echo --- snmpset
-#snmpset $OPT $MIB = 5;
-snmpset $OPT $MIB = $TIMEOUT;
-sleep 5
+echo --- snmpset -Lf $SNMPSET_LOG $SNMP_OPT $MIB = $TIMEOUT;
+snmpset -Lf $SNMPSET_LOG $SNMP_OPT $MIB = $TIMEOUT;
+sleep 2
+
 for i in $(seq 1 $COUNT); do
-	 echo --- $i: snmpget $OPT $MIB
-	 snmpget $OPT $MIB &
+    echo --- $i: snmpget -Lf $SNMPGET_LOG.$i $SNMP_OPT $MIB
+    snmpget -Lf $SNMPGET_LOG.$i $SNMP_OPT $MIB &
 done
 
-exit
-
-echo --- snmpset $OPT $MIB = 1
-snmpset $OPT $MIB = 0;
-echo --- snmpget $OPT $MIB
-snmpget $OPT $MIB
-
-#sleep 10
 #echo --- kill
 #snmp_kill
 
@@ -145,4 +150,3 @@ if [ -e $COREFILE ]; then
 fi
 
 exit 0
-

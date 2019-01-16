@@ -15,7 +15,7 @@
  * the variable we want to tie an OID to.  The agent will handle all
  * * GET and SET requests to this variable changing it's value as needed.
  */
-static long nstAgentSubagentObject = 6;
+static long nstAgentSubagentObject = 0;
 
 int gettid(void)
 {
@@ -32,10 +32,9 @@ static void handle_get_mode(void)
 
         if (nstAgentSubagentObject == 10) {
                 /* use random time */
-                sleeptime = (rand() % 1000 + 1) * mSEC;
+                sleeptime = (rand() % 100 + 1) * mSEC;
         } else
                 sleeptime = nstAgentSubagentObject * SEC;
-
 
         DEBUGMSGTL(("nstAgentSubagentObject", "[%i]: start sleeping=%li\n",
                     gettid(), sleeptime));
@@ -49,14 +48,24 @@ static int test_handler(netsnmp_mib_handler *handler,
                         netsnmp_agent_request_info *reqinfo,
                         netsnmp_request_info *requests)
 {
+	static int x = 0;
         DEBUGMSGTL(("nstAgentSubagentObject", "mode=%i\n", reqinfo->mode));
         if (reqinfo->mode == MODE_GET) {
                 if (nstAgentSubagentObject == 20) {
                         DEBUGMSGTL(("nstAgentSubagentObject", "returning GENERR\n"));
-                        return SNMP_ERR_GENERR;
-                } else
+                        //return SNMP_ERR_GENERR;
+			//return NETSNMP_CALLBACK_OP_SEND_FAILED;
+			return 73;
+                } else {
                         handle_get_mode();
+			x++;
+			if ((x % 7) == 0) {
+				DEBUGMSGTL(("nstAgentSubagentObject", "returning 72\n"));
+				return 72;
+			}
+		}
         }
+	DEBUGMSGTL(("nstAgentSubagentObject", "returning 0\n"));
         return SNMP_ERR_NOERROR;
 }
 
