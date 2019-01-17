@@ -4,6 +4,7 @@
  */
 
 #include <unistd.h>
+#include <signal.h>
 #include <sys/syscall.h>
 
 #include <net-snmp/net-snmp-config.h>
@@ -19,54 +20,71 @@ static long nstAgentSubagentObject = 0;
 
 int gettid(void)
 {
-        return (int) syscall(SYS_gettid);
+	return (int) syscall(SYS_gettid);
 }
-
 
 #define uSEC 1
 #define mSEC (1000 * uSEC)
 #define  SEC (1000 * mSEC)
 static void handle_get_mode(void)
 {
-        long int sleeptime;
+	long int sleeptime;
 
-        if (nstAgentSubagentObject == 10) {
-                /* use random time */
-                sleeptime = (rand() % 100 + 1) * mSEC;
-        } else
-                sleeptime = nstAgentSubagentObject * SEC;
+	if (nstAgentSubagentObject == 10) {
+		/* use random time */
+		sleeptime = (rand() % 100 + 1) * mSEC;
+	} else
+		sleeptime = nstAgentSubagentObject * SEC;
 
-        DEBUGMSGTL(("nstAgentSubagentObject", "[%i]: start sleeping=%li\n",
-                    gettid(), sleeptime));
+	DEBUGMSGTL(("nstAgentSubagentObject", "[%i]: start sleeping=%li\n",
+		    gettid(), sleeptime));
 
-        usleep(sleeptime);
-        DEBUGMSGTL(("nstAgentSubagentObject", "[%i]: wakeup\n", gettid()));
+	usleep(sleeptime);
+	DEBUGMSGTL(("nstAgentSubagentObject", "[%i]: wakeup\n", gettid()));
 }
 
 static int test_handler(netsnmp_mib_handler *handler,
-                        netsnmp_handler_registration *reginfo,
-                        netsnmp_agent_request_info *reqinfo,
-                        netsnmp_request_info *requests)
+			netsnmp_handler_registration *reginfo,
+			netsnmp_agent_request_info *reqinfo,
+			netsnmp_request_info *requests)
 {
 	static int x = 0;
-        DEBUGMSGTL(("nstAgentSubagentObject", "mode=%i\n", reqinfo->mode));
-        if (reqinfo->mode == MODE_GET) {
-                if (nstAgentSubagentObject == 20) {
-                        DEBUGMSGTL(("nstAgentSubagentObject", "returning GENERR\n"));
-                        //return SNMP_ERR_GENERR;
+	DEBUGMSGTL(("nstAgentSubagentObject", "mode=%i\n", reqinfo->mode));
+	if (reqinfo->mode == MODE_GET) {
+		if (nstAgentSubagentObject == 20) {
+			DEBUGMSGTL(("nstAgentSubagentObject", "returning GENERR\n"));
+			//return SNMP_ERR_GENERR;
 			//return NETSNMP_CALLBACK_OP_SEND_FAILED;
 			return 73;
-                } else {
-                        handle_get_mode();
+		} else {
+			handle_get_mode();
+			#if 0
 			x++;
 			if ((x % 7) == 0) {
 				DEBUGMSGTL(("nstAgentSubagentObject", "returning 72\n"));
 				return 72;
 			}
+			#endif
 		}
-        }
+	}
 	DEBUGMSGTL(("nstAgentSubagentObject", "returning 0\n"));
-        return SNMP_ERR_NOERROR;
+	return SNMP_ERR_NOERROR;
+}
+
+void handle_signal(int signal) {
+	if (signal == SIGUSR1) {
+		long int sleeptime= 1 * SEC;
+
+		DEBUGMSGTL(("nstAgentSubagentObject", "Got signal - SIGUSR1\n"));
+		DEBUGMSGTL(("nstAgentSubagentObject", "[%i]: start sleeping=%li\n",
+			    gettid(), sleeptime));
+
+		usleep(sleeptime);
+		DEBUGMSGTL(("nstAgentSubagentObject", "[%i]: wakeup\n", gettid()));
+
+	} else {
+		DEBUGMSGTL(("nstAgentSubagentObject", "Got signal - %d\n", signal));
+	}
 }
 
 /*
@@ -76,17 +94,22 @@ static int test_handler(netsnmp_mib_handler *handler,
 
 void init_nstAgentSubagentObject(void)
 {
-        static oid nstAgentSubagentObject_oid[] ={ 1, 3, 6, 1, 4, 1, 8072, 2, 4, 1, 1, 2, 0 };
+	static oid nstAgentSubagentObject_oid[] ={ 1, 3, 6, 1, 4, 1, 8072, 2, 4, 1, 1, 2, 0 };
 
-        DEBUGMSGTL(("nstAgentSubagentObject", "Initializing the nstAgentSubagentObject module\n"));
-        DEBUGMSGTL(("nstAgentSubagentObject",
-                    "Initalizing nstAgentSubagentObject scalar integer.  Default value = %li\n",
-                    nstAgentSubagentObject));
+	if ( signal(SIGUSR1, handle_signal) == SIG_ERR)
+		exit(-1);
+	else
+		DEBUGMSGTL(("nstAgentSubagentObject", "signal handler setup for SIGUSR1\n"));
 
-        netsnmp_register_long_instance("nstAgentSubagentObject",
-                                       nstAgentSubagentObject_oid,
-                                       OID_LENGTH(nstAgentSubagentObject_oid),
-                                       &nstAgentSubagentObject, test_handler);
+	DEBUGMSGTL(("nstAgentSubagentObject", "Initializing the nstAgentSubagentObject module\n"));
+	DEBUGMSGTL(("nstAgentSubagentObject",
+		    "Initalizing nstAgentSubagentObject scalar integer.  Default value = %li\n",
+		    nstAgentSubagentObject));
 
-        DEBUGMSGTL(("nstAgentSubagentObject", "Done initalizing nstAgentSubagentObject module\n"));
+	netsnmp_register_long_instance("nstAgentSubagentObject",
+				       nstAgentSubagentObject_oid,
+				       OID_LENGTH(nstAgentSubagentObject_oid),
+				       &nstAgentSubagentObject, test_handler);
+
+	DEBUGMSGTL(("nstAgentSubagentObject", "Done initalizing nstAgentSubagentObject module\n"));
 }
