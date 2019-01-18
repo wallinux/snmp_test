@@ -53,8 +53,6 @@ static int test_handler(netsnmp_mib_handler *handler,
 	if (reqinfo->mode == MODE_GET) {
 		if (nstAgentSubagentObject == 20) {
 			DEBUGMSGTL(("nstAgentSubagentObject", "returning GENERR\n"));
-			//return SNMP_ERR_GENERR;
-			//return NETSNMP_CALLBACK_OP_SEND_FAILED;
 			return 73;
 		} else {
 			handle_get_mode();

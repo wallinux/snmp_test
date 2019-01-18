@@ -8,11 +8,22 @@ else
 fi
 [ "$COUNT" = "" ] && COUNT=10
 [ "$TIMEOUT" = "" ] && TIMEOUT=5
+# "TRACE=:" removes traces
+[ "$TRACE" = "" ] && TRACE='/bin/echo --- '
 
-SNMPENV=$TMPDIR/snmp.env
+SNMP_ENV=$TMPDIR/snmp.env
 
 MIB=NET-SNMP-TUTORIAL-MIB::nstAgentSubagentObject.0
+
+if [ "$IPv6" = "yes" ]; then
+    TRANSPORT=udp6
+    HOST=[::]
+else
+    TRANSPORT=udp
+    HOST=127.0.0.1
+fi
 PORT=1161
+ADDRESS=$TRANSPORT:$HOST:$PORT
 
 SNMP_CONF=$TMPDIR/snmp.conf
 
@@ -24,21 +35,24 @@ SNMPD_CONF=$TMPDIR/snmpd.conf
 SNMPD_TOKENS=snmpd.tokens
 SNMPD_PID=$TMPDIR/snmpd.pid
 
-SNMPAGENT_LOG=$TMPDIR/agentx.log
-SNMPAGENT_CONF=$TMPDIR/agentx.conf
+AGENTX_LOG=$TMPDIR/agentx.log
+AGENTX_CONF=$TMPDIR/agentx.conf
+#AGENTX_SOCKET=tcp:$HOST:1705
+AGENTX_SOCKET=/var/agentx/master
 
 COREFILEDIR=$(dirname $(realpath $TMPDIR))
-AGENTX_SOCKET=tcp:localhost:1705
+
 
 SNMP_DEBUG="-d -Dsess_process_packet"
-#SNMP_OPT="$SNMP_DEBUG -v2c -r2 -t3 localhost:$PORT"
-SNMP_OPT="$SNMP_DEBUG -v3 -r2 -t3 -a MD5 -A password -l authNoPriv -u usmuser localhost:$PORT"
+SNMP_OPT="$SNMP_DEBUG -v2c -r1 -t10 $ADDRESS"
+#SNMP_OPT="$SNMP_DEBUG -v3 -r1 -t10 -a MD5 -A password -l authNoPriv -u usmuser $ADDRESS"
 
 SNMP_VER=$(net-snmp-config --version)
 
 ##########################################################################
 function snmp_kill
 {
+    $TRACE $FUNCNAME $*
     killall mysubagent &>/dev/null
     sleep 1
     killall snmpd  &>/dev/null
@@ -46,79 +60,96 @@ function snmp_kill
 
 function create_snmpd_conf ()
 {
-    echo "[snmp] logTimestamp 1" > $SNMPD_CONF
-    # master agentx
+    $TRACE $FUNCNAME $*
+    echo "[snmp] logTimestamp 1" > $1
+
     #    agentXPerms SOCKPERMS [DIRPERMS [USER|UID [GROUP|GID]]]
     #           Defines the permissions and ownership of the AgentX Unix Domain socket, and the parent directories of this socket.  SOCKPERMS  and  DIRPERMS  must  be  octal  digits  (see
     #           chmod(1) ). By default this socket will only be accessible to subagents which have the same userid as the agent.
 
-    #    agentXSocket [<transport-specifier>:]<transport-address>[,...]
-    #           defines  the  address the master agent listens at, or the subagent should connect to.  The default is the Unix Domain socket "/var/agentx/master".  Another common alterna-
-    #           tive is tcp:localhost:705.  See the section LISTENING ADDRESSES in the snmpd(8) manual page for more information about the format of addresses.
+    echo "master agentx" >> $1
+    echo "agentXSocket $AGENTX_SOCKET" >> $1
+    echo "agentXTimeout 0" >> $1
+    echo "agentXRetries 0" >> $1
+    #echo "nsCacheTimeout 10" >> $1
 
-    #           Note:  Specifying an AgentX socket does not automatically enable AgentX functionality (unlike the '-x' command-line option).
-
-    #echo "agentXTimeout 2" >> $SNMPD_CONF
-    #echo "agentXRetries 2" >> $SNMPD_CONF
-
-    echo "createUser usmuser MD5 password AES password" >> $SNMPD_CONF
-    echo "rwuser usmuser"  >> $SNMPD_CONF
+    echo "rwcommunity public" >> $1
+    echo "createUser usmuser MD5 password AES password" >> $1
+    echo "rwuser usmuser"  >> $1
 }
 
 function create_snmpagent_conf ()
 {
-    echo "[snmp] logTimestamp 1" > $SNMPAGENT_CONF
-    #echo "agentXPingInterval 5"  >> $SNMPAGENT_CONF
+    $TRACE $FUNCNAME $*
+    echo "[snmp] logTimestamp 1" > $1
+    #echo "agentXPingInterval 5"  >> $1
 }
 
 function create_snmp_conf ()
 {
-    echo "logTimestamp 1" > $SNMP_CONF
-    echo "defCommunity public" >> $SNMP_CONF
+    $TRACE $FUNCNAME $*
+    echo "logTimestamp 1" > $1
+    echo "defCommunity public" >> $1
 }
 
+function create_snmp_env
+{
+    $TRACE $FUNCNAME $*
+    echo "export MIBS=+NET-SNMP-TUTORIAL-MIB" > $1
+    echo "export SNMPCONFPATH=$TMPDIR" >> $1
+
+    source $1
+}
 
 function prepare
 {
+    $TRACE $FUNCNAME $*
     mkdir -p $TMPDIR
     rm -rf $TMPDIR/*.log
     rm -rf $TMPDIR/*.conf
     rm -rf $COREFILEDIR/core.*
+
     mkdir -p $HOME/.snmp/mibs
     cp -f NET-SNMP-TUTORIAL-MIB.txt $HOME/.snmp/mibs
-    export MIBS=+NET-SNMP-TUTORIAL-MIB
-    create_snmpd_conf
-    create_snmp_conf
-    create_snmpagent_conf
-    echo "export MIBS=+NET-SNMP-TUTORIAL-MIB" > $SNMPENV
-    echo "export SNMPCONFPATH=$TMPDIR" >> $SNMPENV
-    source $SNMPENV
+
+    create_snmpd_conf $SNMPD_CONF
+    create_snmp_conf $SNMP_CONF
+    create_snmpagent_conf $AGENTX_CONF
+
+    create_snmp_env $SNMP_ENV
+
+    echo "$COREFILEDIR/core.%e.%p" > /proc/sys/kernel/core_pattern
+    ulimit -c unlimited
 }
 
 function snmp_start
 {
+    $TRACE $FUNCNAME $*
     [ "$DEBUG" = "yes" ] && snmpd_dbg="-d -DALL"
     [ "$DEBUG" = "yes" ] && agent_dbg="-d -DALL"
     [ "$DEBUG_AW" = "yes" ] && agent_dbg="-d -Dagentx,nstAgentSubagentObject,AW"
-    [ "$DEBUG_AW" = "yes" ] && snmpd_dbg="-d -Dagentx,sess_process_packet,AW,BT,sess_read,snmp_agent,agent_set,handler:calling,handler:returned,helper:cache_handler,cache_timer"
-#    [ "$DEBUG_AW" = "yes" ] && snmpd_dbg="-d -DALL"
+    [ "$DEBUG_AW" = "yes" ] && snmpd_dbg="-d -Dagentx,sess_process_packet,AW,BT,sess_read,snmp_agent,agent_set,handler:calling,handler:returned,helper:cache_handler,cache_timer,logging,string_time_to_secs"
 
-    echo "$COREFILEDIR/core.%e.%p" > /proc/sys/kernel/core_pattern
-    ulimit -c unlimited
-    #snmpd -Lf $SNMPD_LOG $snmpd_dbg  -C -c $SNMPD_CONF,$SNMPD_TOKENS -p $SNMPD_PID --rwcommunity=public --master=agentx --agentXSocket=$AGENTX_SOCKET udp:$PORT
-    snmpd -Lf $SNMPD_LOG $snmpd_dbg -C -c $SNMPD_CONF -p $SNMPD_PID --rwcommunity=public --master=agentx --agentXSocket=$AGENTX_SOCKET udp:$PORT
-    sleep 2
-    if [ "$SNMP_VER" = "5.8" ]; then
-	$TMPDIR/mysubagent -Lf $SNMPAGENT_LOG $agent_dbg -C -c $SNMPAGENT_CONF -x $AGENTX_SOCKET
-    else
-	$TMPDIR/mysubagent -Lf $SNMPAGENT_LOG $agent_dbg -x $AGENTX_SOCKET
-    fi
+    $TRACE "snmpd -Lf $SNMPD_LOG $snmpd_dbg -C -c $SNMPD_CONF -p $SNMPD_PID $ADDRESS"
+    snmpd -Lf $SNMPD_LOG $snmpd_dbg -C -c $SNMPD_CONF -p $SNMPD_PID $ADDRESS
     COREFILE=$COREFILEDIR/core.snmpd.$(cat $SNMPD_PID)
+    sleep 2
+
+    if [ "$SNMP_VER" = "5.8" ]; then
+	$TRACE "$TMPDIR/mysubagent -f -Lf $AGENTX_LOG $agent_dbg -C -c $AGENTX_CONF -x $AGENTX_SOCKET"
+	$TMPDIR/mysubagent -f -Lf $AGENTX_LOG $agent_dbg -C -c $AGENTX_CONF -x $AGENTX_SOCKET &
+    else
+	$TRACE "$TMPDIR/mysubagent -f -Lf $AGENTX_LOG $agent_dbg -x $AGENTX_SOCKET"
+	$TMPDIR/mysubagent -f -Lf $AGENTX_LOG $agent_dbg -x $AGENTX_SOCKET &
+    fi
+    AGENTX_PID=$!
+    $TRACE "agentX PID = $AGENTX_PID"
     sleep 5
 }
 
 function core_dumped()
 {
+    $TRACE $FUNCNAME $*
     echo ------ CORE DUMPED ------
     echo "bt"   >> $TMPDIR/gdb.cmd
     echo "quit" >> $TMPDIR/gdb.cmd
@@ -132,16 +163,27 @@ snmp_kill
 prepare
 snmp_start
 
-echo --- snmpset -Lf $SNMPSET_LOG $SNMP_OPT $MIB = $TIMEOUT;
-snmpset -Lf $SNMPSET_LOG $SNMP_OPT $MIB = $TIMEOUT;
+$TRACE "snmpset -Lf $SNMPSET_LOG $SNMP_OPT $MIB = $TIMEOUT"
+snmpset -Lf $SNMPSET_LOG $SNMP_OPT $MIB = $TIMEOUT
 sleep 2
 
 for i in $(seq 1 $COUNT); do
-    echo --- $i: snmpget -Lf $SNMPGET_LOG.$i $SNMP_OPT $MIB
+    $TRACE "$i: snmpget -Lf $SNMPGET_LOG.$i $SNMP_OPT $MIB"
+    
+    # if [ -e $AGENTX_SOCKET ]; then
+    # 	if [ $i = 9 ]; then
+    # 	    $TRACE "trying to crash: removing $AGENTX_SOCKET"
+    # 	    rm -f $AGENTX_SOCKET
+    # 	fi
+    # fi
+    # if [ $[ $i % 5 ] = 0 ]; then
+    # 	$TRACE "trying to crash: kill -SIGUSR1 $AGENTX_PID"
+    # 	kill -SIGUSR1 $AGENTX_PID
+    # fi
     snmpget -Lf $SNMPGET_LOG.$i $SNMP_OPT $MIB &
 done
 
-#echo --- kill
+#$TRACE "kill"
 #snmp_kill
 
 if [ -e $COREFILE ]; then
