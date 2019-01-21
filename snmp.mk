@@ -71,7 +71,8 @@ snmp.update.%:
 	$(MAKE) snmp.build.$(DISTRO_NAME).$*
 	$(ECHO) "FROM snmp_$(DISTRO_NAME):$*" > $(dockerfile)
 	$(ECHO) "MAINTAINER Anders Wallin" >> $(dockerfile)
-	$(ECHO) "RUN (cd net-snmp; git pull; make install > make_install.out)" >> $(dockerfile)
+	$(ECHO) "RUN (apt-get update -y; apt-get upgrade -y)" >> $(dockerfile)
+	$(ECHO) "RUN (cd net-snmp; git fetch; make install > make_install.out)" >> $(dockerfile)
 	$(DOCKER) build -f $(dockerfile) -t "snmp_$(DISTRO_NAME):$*" .
 	$(RM) $(dockerfile)
 	$(MAKE) snmp.tag SNMP_IMAGE=snmp_$(DISTRO_NAME):$*
