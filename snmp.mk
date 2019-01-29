@@ -3,7 +3,7 @@
 DISTRO			?= ubuntu
 DISTRO_TAG		?= 16.04
 DISTRO_TAGS		?= 16.04 18.10
-export DISTRO_NAME	= $(DISTRO)_$(DISTRO_TAG)
+DISTRO_NAME		= $(DISTRO)_$(DISTRO_TAG)
 
 SNMP_REGISTRY_SERVER	= $(DOCKER_ID_USER)
 
@@ -20,6 +20,11 @@ SNMP_CONTAINER_1	= $(SNMP_TAG).snmp_1_$(DISTRO_NAME)
 SNMP_CONTAINER		?= $(SNMP_CONTAINER_0)
 SNMP_CONTAINERS		= $(SNMP_CONTAINER_0) $(SNMP_CONTAINER_1)
 SNMP_GITROOT		= $(shell git rev-parse --show-toplevel)
+
+export DISTRO_NAME
+export DISTRO_TAG
+export SNMP_TAG
+
 ################################################################
 
 snmp.all: snmp.BUILD # Build all snmp images
@@ -54,19 +59,23 @@ else
 	$(DOCKER) build -q -f $(dockerfile) -t "snmp_$(DISTRO_NAME):$*" .
 endif
 	$(RM) $(dockerfile)
-	$(MAKE) snmp.tag SNMP_IMAGE=snmp_$(DISTRO_NAME):$*
+	$(MAKE) snmp.tag SNMP_TAG=$*
 
 snmp.build.$(DISTRO_NAME).%:
+	$(TRACE)
 	$(MAKE) snmp.build.$* DISTRO_NAME=$(DISTRO_NAME)
 	$(MKSTAMP)
 
 snmp.build: # Build snmp image for SNMP_TAG
+	$(TRACE)
 	$(MAKE) snmp.build.$(DISTRO_NAME).$(SNMP_TAG)
 
 snmp.BUILD: # Build net-snmp for ALL images
+	$(TRACE)
 	$(Q)$(foreach tag,$(SNMP_TAGS), make -s V=$(V) snmp.build.$(tag); )
 
 snmp.update.%:
+	$(TRACE)
 	$(eval dockerfile=snmp/Dockerfile.$*)
 	$(MAKE) snmp.build.$(DISTRO_NAME).$*
 	$(ECHO) "FROM snmp_$(DISTRO_NAME):$*" > $(dockerfile)
@@ -78,9 +87,11 @@ snmp.update.%:
 	$(MAKE) snmp.tag SNMP_IMAGE=snmp_$(DISTRO_NAME):$*
 
 snmp.update: # Update snmp image for SNMP_TAG
+	$(TRACE)
 	$(MAKE) snmp.update.$(SNMP_TAG)
 
 snmp.UPDATE: # Update net-snmp for ALL images
+	$(TRACE)
 	$(Q)$(foreach tag,$(SNMP_TAGS),make snmp.update.$(tag); )
 
 snmp.prepare.%:
@@ -133,6 +144,7 @@ snmp.stop: # Stop snmp containers
 	$(Q)$(foreach container,$(SNMP_CONTAINERS), make -s snmp.stop.$(container); )
 
 snmp.STOP: # Stop ALL snmp containers
+	$(TRACE)
 	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.stop SNMP_TAG=$(tag); )
 
 snmp.rm.%:
@@ -145,6 +157,7 @@ snmp.rm: # Remove snmp container
 	$(Q)$(foreach container,$(SNMP_CONTAINERS), make -s snmp.rm.$(container); )
 
 snmp.RM: snmp.STOP # Remove ALL snmp containers
+	$(TRACE)
 	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.rm SNMP_TAG=$(tag); )
 
 snmp.rmi: # Remove snmp image
@@ -161,6 +174,7 @@ snmp.remote.rmi: snmp.rm # Remove downloaded snmp image
 	$(DOCKER) rmi $(SNMP_REMOTE_IMAGE) || true
 
 snmp.remote.RMI: # Remove ALL remote snmp images
+	$(TRACE)
 	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.remote.rmi SNMP_TAG=$(tag); )
 	$(MAKE) snmp.rmi SNMP_TAG=latest
 
@@ -168,7 +182,7 @@ snmp.shell.%:
 	$(TRACE)
 	$(DOCKER) exec -it $* sh -c "/bin/bash"
 
-snmp.shell: # Start a shell in snmp container
+snmp.shell: snmp.start # Start a shell in snmp container
 	$(TRACE)
 	$(MAKE) snmp.shell.$(SNMP_CONTAINER_0)
 
@@ -181,6 +195,8 @@ snmp.terminal.%:
 	$(Q)gnome-terminal --command "docker exec -it $* sh -c \"/bin/bash\"" &
 
 snmp.tag:
+	$(TRACE)
+	echo "docker tag $(SNMP_IMAGE) $(SNMP_REMOTE_IMAGE)"
 	$(DOCKER) tag $(SNMP_IMAGE) $(SNMP_REMOTE_IMAGE)
 
 snmp.push: snmp.tag # Push image to registry
@@ -188,13 +204,21 @@ snmp.push: snmp.tag # Push image to registry
 	$(DOCKER) push $(SNMP_REMOTE_IMAGE)
 
 snmp.PUSH: # Push ALL snmp images to registry
+	$(TRACE)
 	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.push SNMP_TAG=$(tag); )
 
 snmp.pull: # Pull image from registry
+	$(TRACE)
 	$(DOCKER) pull $(SNMP_REMOTE_IMAGE)
 
 snmp.PULL: # Pull ALL snmp images from registry
+	$(TRACE)
 	$(Q)$(foreach tag,$(SNMP_TAGS),make -s snmp.pull SNMP_TAG=$(tag); )
+
+snmp.lsi:
+	$(TRACE)
+	$(DOCKER) images -f reference=snmp*:* -f reference=*/snmp*:*
+	$(DOCKER) images -f reference=*/snmp*:*
 
 pull:: snmp.PULL
 
@@ -213,3 +237,26 @@ help:: snmp.help
 	$(ECHO) -e "DISTRO_TAG=$(DISTRO_TAG), available DISTRO_TAGS=<$(DISTRO_TAGS)>"
 	$(ECHO) -e "SNMP_TAG=$(SNMP_TAG), available SNMP_TAGS=<$(SNMP_TAGS)>"
 	$(NORMAL)
+
+#############################################################
+aw.start:
+	$(eval container=latest.snmp_0_$(DISTRO_NAME))
+	$(DOCKER) create -P --name=$(container) \
+		-h $(container).eprime.com \
+		--network=$(DOCKER_NETWORK_1) \
+		--dns=8.8.8.8 \
+		-v $(SNMP_GITROOT):/root/snmp-test \
+		--privileged=true \
+		-i \
+		snmp_$(DISTRO_NAME):latest
+	$(DOCKER) start $(container)
+
+aw.shell:
+	$(eval container=latest.snmp_0_$(DISTRO_NAME))
+	$(MAKE) snmp.shell.$(container)
+
+aw.stop:
+	$(eval container=latest.snmp_0_$(DISTRO_NAME))
+	$(MAKE) snmp.stop.$(container)
+	$(MAKE) snmp.rm.$(container)
+
