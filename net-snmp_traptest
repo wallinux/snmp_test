@@ -28,7 +28,7 @@
 #: ${TRACE:=': '}
 
 #####################################################################
-BASEDIR=$(dirname $(realpath $0))
+BASEDIR=$(dirname "$(realpath $0)")
 TESTDIR=/tmp/snmp/test
 SNMPD_CERTDIR=/tmp/snmp/cert_snmpd
 SNMPTRAPD_CERTDIR=/tmp/snmp/cert_snmptrapd
@@ -95,7 +95,6 @@ HOSTNAME=$(hostname)
 TCPDUMP_TIMEOUT=3
 
 NOTE='echo -e --- '
-HEAD="head -3"
 BASH="bash $SETX -c"
 SSH_REMOTE="ssh $REMOTE_IPv4"
 
@@ -109,7 +108,7 @@ source $BASEDIR/snmp_debug.sh
 echoerr() { echo "$@" 1>&2; }
 
 #####################################################################
-function snmp_kill () {
+snmp_kill () {
     $TRACE "Kill all running snmp servers"
 
     killall -w snmpd &> /dev/null
@@ -119,14 +118,14 @@ function snmp_kill () {
     rm -f $SNMPD_LOG $SNMPD_PID
 }
 
-function prepare () {
+prepare () {
     [ ! -e $TESTDIR ] && mkdir -p $TESTDIR
 
     prepare_config
 }
 
 PREPARE_REMOTE=$TESTDIR/prepare_remote
-function prepare_remote () {
+prepare_remote () {
     if [ "$DEBUG" = "yes" ]; then
 	local snmptrapd_debug="-Dtrap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:* -d"
     fi
@@ -153,13 +152,13 @@ function prepare_remote () {
 	$TRACE "starting remote snmptrapd"
 	$SSH_REMOTE "killall -w snmptrapd &> /dev/null"
 	$SSH_REMOTE "rm -f SNMPTRAPD_LOG SNMPTRAPD_PID"
-	echo "REMOTE: snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}"
-	$SSH_REMOTE "SNMPCONFPATH=$TESTDIR:$SNMPTRAPD_CERTDIR snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[@]}"
+	echo "REMOTE: snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[*]}"
+	$SSH_REMOTE "SNMPCONFPATH=$TESTDIR:$SNMPTRAPD_CERTDIR snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[*]}"
     fi
 }
 
 PREPARE_IP=$TESTDIR/prepare_ip
-function prepare_ip () {
+prepare_ip () {
     $TRACE $FUNCNAME
     IPv6_DEV0=$(ip -o -6 addr list $IPDEV0 | grep global | head -1 | awk '{print $4}' | cut -d/ -f1)
     if [ -z $IPv6_DEV0 ]; then
@@ -169,7 +168,7 @@ function prepare_ip () {
     fi
 }
 
-function prepare_config ()
+prepare_config ()
 {
     $TRACE $FUNCNAME
 
@@ -181,7 +180,7 @@ function prepare_config ()
     export_env
 }
 
-function create_cert ()
+create_cert ()
 {
     local ca_config="--org EPRIME --unit RCS --country SE --province DALARNA --locality FALUN --email $EPRIME_EMAIL --san DNS:$HOSTNAME"
     local cert_config="$ca_config --with-ca $EPRIME_CA"
@@ -202,7 +201,7 @@ function create_cert ()
     fi
 }
 
-function get_cert ()
+get_cert ()
 {
     # Always use sha1 as MD in net-snmp, even if the cert is created with another signature MD
     local md=sha1
@@ -217,7 +216,7 @@ function get_cert ()
     [ "$TRACE" != ": " ] && show_cert
 }
 
-function show_cert ()
+show_cert ()
 {
     $TRACE $FUNCNAME
 
@@ -230,7 +229,7 @@ function show_cert ()
     $NOTE "TRAPD_CERT: $trapdCert"
 }
 
-function create_snmpd_conf ()
+create_snmpd_conf ()
 {
     local conf_in=$1
     local conf=$2
@@ -293,7 +292,7 @@ function create_snmpd_conf ()
     fi
 }
 
-function create_snmptrapd_conf ()
+create_snmptrapd_conf ()
 {
     local conf_in=$1
     local conf=$2
@@ -329,7 +328,7 @@ function create_snmptrapd_conf ()
     echo [snmp] $LOGTIMESTAMP >> $conf
 }
 
-function create_snmp_conf ()
+create_snmp_conf ()
 {
     local conf_in=$1
     local conf=$2
@@ -337,22 +336,26 @@ function create_snmp_conf ()
     $TRACE $FUNCNAME
 
     cp $conf_in $conf
-    echo "defCommunity $SNMP_COMMUNITY" >> $conf
-    echo "localCert $appCert" >> $conf
-    echo $LOGTIMESTAMP >> $conf
+    {
+	echo "defCommunity $SNMP_COMMUNITY"
+	echo "localCert $appCert"
+	echo $LOGTIMESTAMP
+    } > $conf
 }
 
 SNMP_ENV=$TESTDIR/snmpenv
-function export_env ()
+export_env ()
 {
     $TRACE $FUNCNAME
-
-    echo "export SNMPCONFPATH=$TESTDIR:$SNMPD_CERTDIR" >> $SNMP_ENV
-    echo "export MD=$MD" >> $SNMP_ENV
+    {
+	echo "export SNMPCONFPATH=$TESTDIR:$SNMPD_CERTDIR"
+	echo "export MD=$MD"
+    } > $SNMP_ENV
+    
     source $SNMP_ENV
 }
 
-function set_servers()
+set_servers()
 {
     SNMPD_SERVERS=()
     SNMPTRAPD_SERVERS=()
@@ -366,7 +369,7 @@ function set_servers()
     SNMPTRAPD_SERVERS+=("dtlsudp6:[$IPv6_HOST]:$SNMPTRAPD_DTLSUDP_PORT")
 }
 
-function snmp_start () {
+snmp_start () {
     if [ "$DEBUG" = "yes" ]; then
 	local snmptrapd_debug="-DAW,trap,usm,tsm,dtlsudp,tsm,9:dtlsudp,9:dtlsudp:*,sess_process_packet,snmptrapd,9:openssl:fingerprint,cert:find:params,tls,tlsbase,tls:*,tls_x509:* -d"
 	local snmptrapd_debug="-DALL -d"
@@ -378,15 +381,15 @@ function snmp_start () {
     echo '/tmp/core.%e.%p' > /proc/sys/kernel/core_pattern
     ulimit -c unlimited
 
-    $NOTE "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}"
-    SNMPCONFPATH=$TESTDIR:$SNMPTRAPD_CERTDIR snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[@]}
-    $NOTE "snmpd -V -a -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[@]}"
-    snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[@]}
+    $NOTE "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[*]}"
+    SNMPCONFPATH=$TESTDIR:$SNMPTRAPD_CERTDIR snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[*]}
+    $NOTE "snmpd -V -a -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[*]}"
+    snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[*]}
     sleep 3
 }
 
 TCPDUMP_CAP=$TESTDIR/tcpdump.pcap
-function tcpdump_capture ()
+tcpdump_capture ()
 {
     local interface=$1
     local rotate_seconds=$2
@@ -397,7 +400,7 @@ function tcpdump_capture ()
     fi
 }
 
-function tcpdump_read ()
+tcpdump_read ()
 {
     # workaround: need a last package to close the tcpdump capture
     ping6 -c 1 $IPv6_LO >/dev/null
@@ -406,7 +409,7 @@ function tcpdump_read ()
 	    port $SNMPTRAPD_DTLSUDP_PORT 2> /dev/null
 }
 
-function get_ipv ()
+get_ipv ()
 {
     echo $1 | grep : >/dev/null
     if [ $? = 0 ]; then
@@ -418,7 +421,7 @@ function get_ipv ()
     fi
 }
 
-function get_proto ()
+get_proto ()
 {
     if [ $1 = $SNMPTRAPD_PORT ]; then
 	printf "udp"
@@ -427,13 +430,13 @@ function get_proto ()
     fi
 }
 
-function convert_ip2hex ()
+convert_ip2hex ()
 {
     local host=$1
     local port=$2
 
     printf "0x"
-    if [ $(get_ipv $host) = 6 ]; then
+    if [ "$(get_ipv $host)" = "6" ]; then
 	echo $host | grep :: >/dev/null
 	if [ $? = 0 ]; then
 	    no_of_colons=$(echo $host | tr -d -c ':' | awk '{ print length; }')
@@ -474,7 +477,7 @@ function convert_ip2hex ()
     printf "%04x\n" $port
 }
 
-function configure_mib()
+configure_mib()
 {
     local host=$1
     local targetaddr=$(convert_ip2hex $2 $3)
@@ -562,7 +565,7 @@ function configure_mib()
     $SNMPSET SNMP-NOTIFICATION-MIB::snmpNotifyRowStatus.$obj = 1
 }
 
-function get_mib()
+get_mib()
 {
     local host=$1
 
@@ -584,7 +587,7 @@ function get_mib()
     cat $SNMPWALK_OUT
 }
 
-function send_trap () {
+send_trap () {
     local host=$1
     local trap_oid="NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatNotification"
     local oid=netSnmpExampleHeartbeatRate
@@ -619,14 +622,14 @@ function send_trap () {
     fi
 }
 
-function send_traps () {
+send_traps () {
     [ "$IPv4" = "yes" ]     && send_trap $CONFIG_IPv4:$SNMPTRAPD_PORT 4
     [ "$IPv6" = "yes" ]     && send_trap udp6:[$CONFIG_IPv6]:$SNMPTRAPD_PORT 6
     [ "$DTLSUDP4" = "yes" ] && send_trap dtlsudp:$CONFIG_IPv4:$SNMPTRAPD_DTLSUDP_PORT 44
     [ "$DTLSUDP6" = "yes" ] && send_trap dtlsudp6:[$CONFIG_IPv6]:$SNMPTRAPD_DTLSUDP_PORT 66
 }
 
-function configure_mibs ()
+configure_mibs ()
 {
     [ $IPv4 = yes ]     && configure_mib $CONFIG_HOST $CONFIG_IPv4 $SNMPTRAPD_PORT
     [ $IPv6 = yes ]     && configure_mib $CONFIG_HOST $CONFIG_IPv6 $SNMPTRAPD_PORT
@@ -634,7 +637,7 @@ function configure_mibs ()
     [ $DTLSUDP6 = yes ] && configure_mib $CONFIG_HOST $CONFIG_IPv6 $SNMPTRAPD_DTLSUDP_PORT
 }
 
-function trap_kick ()
+trap_kick ()
 {
     local host=$1
     #local snmpset_debug="-Dsnmp -d"
@@ -655,7 +658,7 @@ function trap_kick ()
     [ "$DYNDEBUG" = "yes" ] && debugall_off
 }
 
-function usage()
+usage()
 {
     echo -e "\n$(basename $0) -h -c -C trap_traget\n"
     echo -e " trap_target = <loopback|local|remote>"
@@ -723,7 +726,7 @@ else
     CONFIG_IPv6=$IPv6_LO
 fi
 
-$NOTE $(date) IPv4: $CONFIG_IPv4 IPv6: $CONFIG_IPv6 $trap_target
+$NOTE "$(date) IPv4: $CONFIG_IPv4 IPv6: $CONFIG_IPv6 $trap_target"
 
 snmp_kill
 prepare

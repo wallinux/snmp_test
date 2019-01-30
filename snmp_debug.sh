@@ -1,8 +1,9 @@
+#!/bin/bash
 
-: ${TRACE:='echo -e --- '}
-#: ${TRACE:=': '}
+: "${DBGTRACE:='echo -e --- '}"
+#: ${DBGTRACE:=': '}
 : ${DEBUG_ARGS:="-v 3 -r 0 -a MD5 -A $USM_CMD_PW -l authNoPriv -u $USM_CMD_USER $CONFIG_HOST"}
-: ${DEBUG_OUT:='/dev/null'}
+: "${DEBUG_OUT:='/dev/null'}"
 #: ${DEBUG_OUT:='/dev/stdout'}
 
 DEBUG_SNMPSET="snmpset $DEBUG_ARGS"
@@ -10,134 +11,134 @@ DEBUG_SNMPGET="snmpget $DEBUG_ARGS"
 DEBUG_SNMPWALK="snmpwalk $DEBUG_ARGS"
 
 ##############################################################################
-function debug_on ()
+debug_on ()
 {
-    $TRACE $FUNCNAME
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 1 > $DEBUG_OUT
+    $DBGTRACE "${FUNCNAME[$0]}"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 1 > "$DEBUG_OUT"
 }
 
-function debug_off ()
+debug_off ()
 {
-    $TRACE $FUNCNAME
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 2 > $DEBUG_OUT
+    $DBGTRACE "${FUNCNAME[$0]}"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 2 > "$DEBUG_OUT"
 }
 
-function debug_status ()
+debug_status ()
 {
-    $TRACE $FUNCNAME
+    $DBGTRACE "${FUNCNAME[$0]}"
     $DEBUG_SNMPGET NET-SNMP-AGENT-MIB::nsDebugEnabled.0
 }
 
 ##############################################################################
-function tokenall_on ()
+tokenall_on ()
 {
-    $TRACE $FUNCNAME
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 1 > $DEBUG_OUT
+    $DBGTRACE "${FUNCNAME[$0]}"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 1 > "$DEBUG_OUT"
 }
 
-function tokenall_off ()
+tokenall_off ()
 {
-    $TRACE $FUNCNAME
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 2 > $DEBUG_OUT
+    $DBGTRACE "${FUNCNAME[$0]}"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 2 > "$DEBUG_OUT"
 }
 
-function tokenall_status ()
+tokenall_status ()
 {
-    $TRACE $FUNCNAME
+    $DBGTRACE "${FUNCNAME[$0]}"
     $DEBUG_SNMPGET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0
 }
 
 ##############################################################################
-function debugall_on ()
+debugall_on ()
 {
-    $TRACE $FUNCNAME
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 1 > $DEBUG_OUT
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 1 > $DEBUG_OUT
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0 = 1 > $DEBUG_OUT
+    $DBGTRACE "${FUNCNAME[$0]}"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 1 > "$DEBUG_OUT"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 1 > "$DEBUG_OUT"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0 = 1 > "$DEBUG_OUT"
 }
 
-function debugall_off ()
+debugall_off ()
 {
-    $TRACE $FUNCNAME
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 2 > $DEBUG_OUT
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0 = 2 > $DEBUG_OUT
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 2 > $DEBUG_OUT
+    $DBGTRACE "${FUNCNAME[$0]}"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugEnabled.0 = 2 > "$DEBUG_OUT"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0 = 2 > "$DEBUG_OUT"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugOutputAll.0 = 2 > "$DEBUG_OUT"
 }
 
 ##############################################################################
-function token_create ()
+token_create ()
 {
     local token=$1
 
-    $TRACE $FUNCNAME $token
+    $DBGTRACE "${FUNCNAME[$0]}" "$token"
     $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'" = 5
 }
 
-function token_destroy ()
+token_destroy ()
 {
     local token=$1
 
-    $TRACE $FUNCNAME $token
+    $DBGTRACE "${FUNCNAME[$0]}" "$token"
     $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'" = 6
 }
 
-function token_on ()
+token_on ()
 {
     local token=$1
 
-    $TRACE $FUNCNAME $token
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'" = 1 > $DEBUG_OUT
+    $DBGTRACE "${FUNCNAME[$0]}" "$token"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'" = 1 > "$DEBUG_OUT"
 }
 
-function token_off ()
+token_off ()
 {
     local token=$1
 
-    $TRACE $FUNCNAME $token
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'" = 2 > $DEBUG_OUT
+    $DBGTRACE "${FUNCNAME[$0]}" "$token"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'" = 2 > "$DEBUG_OUT"
 }
 
-function token_status ()
+token_status ()
 {
     local token=$1
 
-    $TRACE $FUNCNAME $token
+    $DBGTRACE "${FUNCNAME[$0]}" "$token"
     $DEBUG_SNMPGET NET-SNMP-AGENT-MIB::nsDebugTokenStatus."'$token'"
 }
 
 
 ##############################################################################
-function pdu_on ()
+pdu_on ()
 {
-    $TRACE $FUNCNAME
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0 = 1 > $DEBUG_OUT
+    $DBGTRACE "${FUNCNAME[$0]}"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0 = 1 > "$DEBUG_OUT"
 }
 
-function pdu_off ()
+pdu_off ()
 {
-    $TRACE $FUNCNAME
-    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0 = 2  > $DEBUG_OUT
+    $DBGTRACE "${FUNCNAME[$0]}"
+    $DEBUG_SNMPSET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0 = 2  > "$DEBUG_OUT"
 }
 
-function pdu_status ()
+pdu_status ()
 {
-    $TRACE $FUNCNAME
+    $DBGTRACE "${FUNCNAME[$0]}"
     $DEBUG_SNMPGET NET-SNMP-AGENT-MIB::nsDebugDumpPdu.0
 }
 
 ##############################################################################
-function debug_list ()
+debug_list ()
 {
-    $TRACE $FUNCNAME
+    $DBGTRACE "${FUNCNAME[$0]}"
     echo \<----------------------------------------------
     $DEBUG_SNMPWALK "NET-SNMP-AGENT-MIB::nsConfigDebug"
     echo ----------------------------------------------\>
     #$DEBUG_SNMPWALK "NET-SNMP-AGENT-MIB::nsLoggingTable"
 }
 
-function log_list ()
+log_list ()
 {
-    $TRACE $FUNCNAME
+    $DBGTRACE "${FUNCNAME[$0]}"
     echo \<----------------------------------------------
     $DEBUG_SNMPWALK "NET-SNMP-AGENT-MIB::nsLoggingTable"
     echo ----------------------------------------------\>
