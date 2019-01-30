@@ -48,7 +48,6 @@ static int test_handler(netsnmp_mib_handler *handler,
 			netsnmp_agent_request_info *reqinfo,
 			netsnmp_request_info *requests)
 {
-	static int x = 0;
 	DEBUGMSGTL(("nstAgentSubagentObject", "mode=%i\n", reqinfo->mode));
 	if (reqinfo->mode == MODE_GET) {
 		if (nstAgentSubagentObject == 20) {
@@ -57,10 +56,13 @@ static int test_handler(netsnmp_mib_handler *handler,
 		} else {
 			handle_get_mode();
 			#if 0
-			x++;
-			if ((x % 7) == 0) {
-				DEBUGMSGTL(("nstAgentSubagentObject", "returning 72\n"));
-				return 72;
+			{
+				static int x = 0;
+				x++;
+				if ((x % 7) == 0) {
+					DEBUGMSGTL(("nstAgentSubagentObject", "returning 72\n"));
+					return 72;
+				}
 			}
 			#endif
 		}
