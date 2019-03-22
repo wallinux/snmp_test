@@ -46,6 +46,9 @@ test1:
 test2:
 	./test_example-demon
 
+test3: asyncapp
+	./asyncapp
+
 clean:
 	rm -f $(TARGETS) $(LIBS) *.o
 

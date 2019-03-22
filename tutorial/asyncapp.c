@@ -25,10 +25,10 @@ struct host {
   const char *name;
   const char *community;
 } hosts[] = {
-  { "test1",		"public" },
-  { "test2",		"public" },
-  { "test3",		"public" },
-  { "test4",		"public" },
+  { "localhost",	"public" },
+//  { "test2",		"public" },
+//  { "test3",		"public" },
+//  { "test4",		"public" },
   { NULL }
 };
 
@@ -40,9 +40,9 @@ struct oid {
   oid Oid[MAX_OID_LEN];
   int OidLen;
 } oids[] = {
-  { "system.sysDescr.0" },
-  { "interfaces.ifNumber.1" },
-  { "interfaces.ifNumber.0" },
+  { "SNMPv2-MIB::system.sysDescr.0" },
+//  { "IF-MIB::interfaces.ifNumber.1" },
+//  { "IF-MIB::interfaces.ifNumber.0" },
   { NULL }
 };
 
@@ -51,23 +51,25 @@ struct oid {
  */
 void initialize (void)
 {
-  struct oid *op = oids;
+	struct oid *op = oids;
+	printf("%s\n",__func__);
 
-  /* Win32: init winsock */
-  SOCK_STARTUP;
+	/* Win32: init winsock */
+	SOCK_STARTUP;
 
-  /* initialize library */
-  init_snmp("asynchapp");
+	/* initialize library */
+	init_snmp("asynchapp");
 
-  /* parse the oids */
-  while (op->Name) {
-    op->OidLen = sizeof(op->Oid)/sizeof(op->Oid[0]);
-    if (!read_objid(op->Name, op->Oid, (size_t *) &op->OidLen)) {
-      snmp_perror("read_objid");
-      exit(1);
-    }
-    op++;
-  }
+	/* parse the oids */
+	while (op->Name) {
+		printf("%s: 3, %s\n",__func__, op->Name);
+		op->OidLen = MAX_OID_LEN;
+		if (!read_objid(op->Name, op->Oid, (size_t *) &op->OidLen)) {
+			snmp_perror("read_objid");
+			exit(1);
+		}
+		op++;
+	}
 }
 
 /*
@@ -259,6 +261,7 @@ void asynchronous(void)
 
 int main (int argc, char **argv)
 {
+  printf("%s\n",__func__);
   initialize();
 
   printf("---------- synchronous -----------\n");

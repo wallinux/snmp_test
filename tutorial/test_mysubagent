@@ -4,9 +4,9 @@
 MIB=NET-SNMP-TUTORIAL-MIB::nstAgentSubagentObject.0
 PORT=1161
 
-TESTDIR=/tmp/snmp/test
+TESTDIR=$PWD/tmp
 SNMPD_LOG=$TESTDIR/snmpd.log
-SNMPD_AGENT_LOG=$TESTDIR/snmpd_agent.log
+SNMPD_AGENT_LOG=$TESTDIR/agentx.log
 
 function snmp_kill
 {
@@ -24,8 +24,27 @@ function prepare
 
 function snmp_start
 {
-    local snmpd_dbg="-d"
-    local agent_dbg="-d -D\
+    local snmpd_dbg="-d -D\
+AW,\
+AW1,\
+agent_set,\
+agent_set,\
+agentx/config/,\
+agentx/master,\
+agentx_build,\
+handler:calling,\
+handler:returned,\
+sess_async_send,\
+sess_process_packet,\
+sess_read,\
+signal\
+snmp_agent,\
+snmp_api,\
+snmp_synch,\
+trap,\
+"
+if 0
+   local agent_dbg="-d -D\
 agent_set,\
 agentx_build,\
 agentx_register_app_config_handler,\
@@ -77,9 +96,15 @@ transport_callback,\
 trap,\
 tsm,\
 verbose,\
-wtest"
+wtest,\
+"
+else
+    local agent_dbg="-d -D\
+nstAgentSubagentObject\
+"
+fi
 
-    snmpd $snmpd_dbg -Lf $SNMPD_LOG -C --rwcommunity=public --master=agentx --agentXSocket=tcp:localhost:1705 udp:$PORT
+    snmpd -Lf $SNMPD_LOG $snmpd_dbg  -C --rwcommunity=public --master=agentx --agentXSocket=tcp:localhost:1705 udp:$PORT
     ./mysubagent -Lf $SNMPD_AGENT_LOG $agent_dbg -x tcp:localhost:1705
     sleep 1
 }
