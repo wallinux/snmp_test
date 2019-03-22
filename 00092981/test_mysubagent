@@ -67,6 +67,7 @@ create_snmpd_conf ()
 	echo "agentXSocket $AGENTX_SOCKET"
 	echo "agentXTimeout 3"
 	echo "agentXRetries 3"
+	echo "agentXPingInterval 5"
 	#echo "nsCacheTimeout 10"
 	echo "rwcommunity public"
 	echo "createUser usmuser MD5 password AES password"
@@ -79,7 +80,9 @@ create_snmpagent_conf ()
     $TRACE $FUNCNAME "$@"
     {
 	echo "[snmp] logTimestamp 1"
-	#echo "agentXPingInterval 5"
+	echo "agentXPingInterval 5"
+	echo "agentXTimeout 3"
+	echo "agentXRetries 3"
     } > $1
 }
 
