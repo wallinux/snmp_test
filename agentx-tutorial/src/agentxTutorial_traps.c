@@ -11,6 +11,7 @@
 extern const oid snmptrap_oid[];
 extern const size_t snmptrap_oid_len;
 
+#undef AW
 int
 send_myROIntHit_trap(int ValueForAlerting)
 {
@@ -20,11 +21,19 @@ send_myROIntHit_trap(int ValueForAlerting)
     const oid myROIntHit_oid[] = { 1,3,6,1,3,9999,0,1 };
     const oid myTrapData_oid[] = { 1,3,6,1,3,9999,0,0,2, 0 };
     const oid myTrapTime_oid[] = { 1,3,6,1,3,9999,0,0,1, 0 };
+#if AW
     const oid myROInteger_oid[] = { 1,3,6,1,3,9999,1,2, 0 };
 
+#endif
+    int status = SNMP_ERR_NOERROR;
+
     DEBUGMSGTL(("agentxTutorial", "send_myROIntHit_trap %i\n", ValueForAlerting));
-    //    sleep(10);
-    //DEBUGMSGTL(("agentxTutorial", "send_myROIntHit_trap wakeup\n"));
+#if AW
+	    sleep(10);
+	    DEBUGMSGTL(("agentxTutorial", "send_myROIntHit_trap wakeup\n"));
+	    status = NETSNMP_CALLBACK_OP_TIMED_OUT;
+#endif
+
     /*
      * Set the snmpTrapOid.0 value
      */
@@ -46,12 +55,14 @@ send_myROIntHit_trap(int ValueForAlerting)
         ASN_INTEGER,
         &now,
         sizeof(now));
+#ifdef AW
     snmp_varlist_add_variable(&var_list,
         myROInteger_oid, OID_LENGTH(myROInteger_oid),
         ASN_INTEGER,
         &ValueForAlerting,
         sizeof(ValueForAlerting));
 
+#endif
     /*
      * Add any extra (optional) objects here
      */
@@ -63,5 +74,5 @@ send_myROIntHit_trap(int ValueForAlerting)
     send_v2trap( var_list );
     snmp_free_varbind( var_list );
 
-    return SNMP_ERR_NOERROR;
+    return status;
 }

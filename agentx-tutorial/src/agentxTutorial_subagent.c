@@ -188,16 +188,21 @@ main (int argc, char **argv) {
   signal(SIGINT, stop_server);
 
   /** Setup our alarmhandler so we can see values change */
+undef AW
+#ifdef AW
   signal(SIGALRM, AlrmHandler);
   AlrmHandler(0);
 
+#endif
   /* you're main loop here... */
   while(keep_running) {
     /* if you use select(), see snmp_select_info() in snmp_api(3) */
     /*     --- OR ---  */
+    DEBUGMSGTL(("agentxTutorial", "%s, keep_running\n",__func__));
     agent_check_and_process(1); /* 0 == don't block */
   }
 
+  DEBUGMSGTL(("agentxTutorial", "%s, shutdown\n",__func__));
   /* at shutdown time */
   snmp_shutdown("agentxTutorial");
   SOCK_CLEANUP;
