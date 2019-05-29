@@ -1,0 +1,498 @@
+#!/bin/bash
+
+[ -z "$TRAP" ] && TRAP=no
+
+[ -z "$IPv4" ] && IPv4=yes
+[ -z "$IPv6" ] && IPv6=no
+[ -z "$TCPDUMP" ] && TCPDUMP=no
+[ -z "$REMOTE" ] && REMOTE=yes
+[ -z "$REMOTE_TCPDUMP" ] && REMOTE_TCPDUMP=no
+[ -z "$DEBUG" ] && DEBUG=no
+[ -z "$SETX" ] && SETX="-x"
+[ -z "$EXTRA" ] && EXTRA="yes"
+[ -z "$INFORM" ] && INFORM="no"
+[ $INFORM = "yes" ] && inform="-Ci"
+[ -z "$USE_SRCADDR" ] && USE_SRCADDR=yes
+[ -z "$USE_SNMPDTRAP" ] && USE_SNMPDTRAP=yes
+
+
+[ -z "$IPDEV0" ] && IPDEV0=eth0
+[ -z "$REMOTE_IPDEV0" ] && REMOTE_IPDEV0=eth0
+[ -z "$REMOTE_IPv4" ] && REMOTE_IPv4=128.224.95.149
+[ -z "$REMOTE_IPv6" ] && REMOTE_IPv6=2001:1b70:82a8:90:1284:31:0:149
+
+#####################################################################
+SNMPVERSION=$(snmpget --version 2>&1 | cut -d':' -f2 | tr -d ' ')
+[ "$SNMPVERSION" != "5.8" ] && USE_SRCADDR=no
+
+BASEDIR=$(dirname "$(realpath "$0")")
+TESTDIR=/tmp/snmp/test
+
+SNMPD_LOG=$TESTDIR/snmpd.log
+SNMPD_PID=$TESTDIR/snmpd.pid
+SNMPD_CONF=$TESTDIR/snmpd.conf
+SNMPD_PORT=161
+
+SNMPTRAPD_LOG=$TESTDIR/snmptrapd.log
+SNMPTRAPD_PID=$TESTDIR/snmptrapd.pid
+SNMPTRAPD_CONF=$TESTDIR/snmptrapd.conf
+SNMPTRAPD_PORT=162
+
+SNMP_CONF=$TESTDIR/snmp.conf
+
+SNMPINFORM_LOG=$TESTDIR/snmpinform.log
+SNMPTRAP_LOG=$TESTDIR/snmptrap.log
+
+LOGTIMESTAMP="logTimestamp 0"
+
+USM_CMD_USER=usm_cmduser
+USM_CMD_PW=usm_cmdpw
+USM_CMD_EID=0x80001f8880523983647b8b0357
+PRIVPROTO=AES
+
+IPv4_HOST=0.0.0.0
+IPv4_LO=127.0.0.1
+IPv4_EXTRA=172.16.1.100
+IPv4_DEV0=$(ip -o -4 addr list $IPDEV0 | head -1 | awk '{print $4}' | cut -d/ -f1)
+IPv4_DEV0_LAST=$(echo "$IPv4_DEV0" | cut -d'.' -f4)
+
+IPv6_HOST=::
+IPv6_LO=::1
+IPv6_EXTRA=2001:1b70:82a8:90:e085::10
+
+NOTE='echo -e \n--- '
+BASH="bash $SETX -c"
+SSH_REMOTE="ssh $REMOTE_IPv4"
+
+TRAP_OID="NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatNotification"
+OID=netSnmpExampleHeartbeatRate
+
+trap_counts=0
+remote_trap_counts=0
+trap_fails=0
+remote_trap_fails=0
+
+#CLIENTADDR4=$IPv4_EXTRA
+CLIENTADDR6=$IPv6_EXTRA
+CLIENTADDR4=$IPv4_DEV0
+#CLIENTADDR4=172.19.1.2
+#CLIENTADDR6=$IPv6_DEV0
+
+#####################################################################
+snmp_kill () {
+    $NOTE "Kill all running snmp servers"
+
+    killall -w snmpd
+    killall -w snmptrapd
+
+    rm -f $SNMPTRAPD_LOG* $SNMPTRAPD_PID
+    rm -f $SNMPD_LOG $SNMPD_PID
+}
+
+prepare () {
+    [ ! -e $TESTDIR ] && mkdir -p $TESTDIR
+    prepare_ip
+    prepare_config
+    prepare_remote
+}
+
+PREPARE_REMOTE=$TESTDIR/prepare_remote
+prepare_remote () {
+    $NOTE $FUNCNAME
+
+    if [ "$DEBUG" = "yes" ]; then
+	local snmptrapd_debug="-Dtrap,usm,sess_process_packet,snmptrapd -d"
+    fi
+
+    if [ "$REMOTE" = "yes" ]; then
+	if [ ! -e $PREPARE_REMOTE ]; then
+	    $NOTE "preparing remote IP"
+	    $SSH_REMOTE "killall -w snmptrapd"
+	    $SSH_REMOTE "ifconfig $REMOTE_IPDEV0 inet6 add $REMOTE_IPv6/64"
+	    $SSH_REMOTE "ip -6 route add default dev $REMOTE_IPDEV0"
+	    if [ "$EXTRA" = "yes" ]; then
+		$SSH_REMOTE "ip -6 route add via $IPv6_DEV0 $IPv6_EXTRA dev $REMOTE_IPDEV0"
+		$SSH_REMOTE "ip -4 route add via $IPv4_DEV0 $IPv4_EXTRA dev $REMOTE_IPDEV0"
+	    fi
+	    $SSH_REMOTE "rm -rf $TESTDIR"
+	    $SSH_REMOTE "mkdir -p $TESTDIR $SNMP_PERSISTENT_DIR"
+	    rsync -az $TESTDIR/ $REMOTE_IPv4:$TESTDIR
+	    $SSH_REMOTE "sed -i 's/^clientaddr/#clientaddr/' $SNMP_CONF"
+	    touch $PREPARE_REMOTE
+	fi
+	local snmptrapd_servers=()
+	snmptrapd_servers+=("udp:$SNMPTRAPD_PORT")
+	snmptrapd_servers+=("udp6:$SNMPTRAPD_PORT")
+
+	$NOTE "starting remote snmptrapd"
+	$SSH_REMOTE "killall -w snmptrapd"
+	$SSH_REMOTE "rm -f SNMPTRAPD_LOG SNMPTRAPD_PID"
+	echo "REMOTE: snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[*]}"
+	$SSH_REMOTE "source $SNMPENV; snmptrapd $snmptrapd_debug -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID ${snmptrapd_servers[*]}"
+    fi
+}
+
+PREPARE_IP=$TESTDIR/prepare_ip
+prepare_ip () {
+    $NOTE $FUNCNAME
+
+    IPv6_DEV0=$(ip -o -6 addr list $IPDEV0 | grep global | head -1 | awk '{print $4}' | cut -d/ -f1)
+    if [ -z $IPv6_DEV0 ]; then
+	# set global IPv6
+	IPv6_DEV0=2001:1b70:82a8:90:1284:31:0:${IPv4_DEV0_LAST}
+	ifconfig $IPDEV0 inet6 add $IPv6_DEV0/80
+    fi
+
+    if [ "$EXTRA" = "yes" ]; then
+	if [ ! -e $PREPARE_IP ]; then
+	    $NOTE "Preparing ip addresses"
+	    ifconfig lo inet add $IPv4_EXTRA
+	    ifconfig lo inet6 add $IPv6_EXTRA/128
+	    grep localhost_extra /etc/hosts >/dev/null
+	    if [ $? = 1 ]; then
+		echo -e "\n$IPv4_EXTRA\tlocalhost_extra_ipv4" >> /etc/hosts
+		echo -e "$IPv6_EXTRA\tlocalhost_extra_ipv6" >> /etc/hosts
+	    fi
+	    touch $PREPARE_IP
+	else
+	    $NOTE "IP addresses already prepared"
+	fi
+    fi
+}
+
+prepare_config ()
+{
+    $NOTE $FUNCNAME
+
+    create_snmp_conf $SNMP_CONF
+    create_snmpd_conf $SNMPD_CONF
+    create_snmptrapd_conf $SNMPTRAPD_CONF
+    export_env
+}
+
+create_snmpd_conf ()
+{
+    $NOTE $FUNCNAME
+    local conf=$1
+
+    echo -e "# $conf\n" > $conf
+    echo "com2sec  awnotif default public" >> $conf
+    echo "com2sec6 awnotif default public" >> $conf
+    echo "group AWGroup v2c awnotif" >> $conf
+    echo "view all included .1 80" >> $conf
+    echo "access AWGroup \"\" any noauth exact all all all" >> $conf
+    echo "master  agentx" >> $conf
+    echo -e "[snmp] $LOGTIMESTAMP\n" >> $conf
+    echo "createUser $USM_CMD_USER MD5 $USM_CMD_PW $PRIVPROTO $USM_CMD_PW" >> $conf
+    echo "rwuser $USM_CMD_USER" >> $conf
+    echo -e "trapcommunity public\n" >> $conf
+
+    if [ "$USE_SNMPDTRAP" = "yes" ]; then
+	if [ $USE_SRCADDR = yes ]; then
+	    [ "$EXTRA" = "yes" ] && srcaddr4="-s $CLIENTADDR4"
+	    [ "$EXTRA" = "yes" ] && srcaddr6="-s $CLIENTADDR6"
+	else
+	    [ "$IPv4" = "yes" ] && [ "$EXTRA" = "yes" ] && echo -e "[snmp] clientaddr $CLIENTADDR4\n" >> $conf
+	    [ "$IPv6" = "yes" ] && [ "$EXTRA" = "yes" ] && echo -e "[snmp] clientaddr $CLIENTADDR6\n" >> $conf
+	fi
+
+	local TRAPSESS="trapsess $inform -v 3 -r 1 -t 5"
+	local TRAPSESS_USM4="$TRAPSESS -e $USM_CMD_EID -a MD5 -A $USM_CMD_PW -x $PRIVPROTO -X $USM_CMD_PW -l authPriv -u $USM_CMD_USER $srcaddr4"
+	local TRAPSESS_USM6="$TRAPSESS -e $USM_CMD_EID -a MD5 -A $USM_CMD_PW -x $PRIVPROTO -X $USM_CMD_PW -l authPriv -u $USM_CMD_USER $srcaddr6"
+
+	if [ "$IPv4" = "yes" ]; then
+	    echo "$TRAPSESS_USM4 udp:$IPv4_LO:$SNMPTRAPD_PORT" >> $conf
+	    echo "$TRAPSESS_USM4 udp:$IPv4_DEV0:$SNMPTRAPD_PORT" >> $conf
+	    [ "$EXTRA" = "yes" ]  && echo "$TRAPSESS_USM4 udp:$IPv4_EXTRA:$SNMPTRAPD_PORT" >> $conf
+	    [ "$REMOTE" = "yes" ] && echo "$TRAPSESS_USM4 udp:$REMOTE_IPv4:$SNMPTRAPD_PORT" >> $conf
+	fi
+
+	if [ "$IPv6" = "yes" ]; then
+	    echo "$TRAPSESS_USM6 udp6:[$IPv6_LO]:$SNMPTRAPD_PORT" >> $conf
+	    echo "$TRAPSESS_USM6 udp6:[$IPv6_DEV0]:$SNMPTRAPD_PORT" >> $conf
+	    [ "$EXTRA" = "yes" ]  && echo "$TRAPSESS_USM6 udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT" >> $conf
+	    [ "$REMOTE" = "yes" ] && echo "$TRAPSESS_USM6 udp6:[$REMOTE_IPv6]:$SNMPTRAPD_PORT" >> $conf
+	fi
+    fi
+}
+
+create_snmptrapd_conf ()
+{
+    $NOTE $FUNCNAME
+    local conf=$1
+
+    echo -e "# $conf\n" > $conf
+    echo "authCommunity log,execute,net public" >> $conf
+    echo createUser -e $USM_CMD_EID $USM_CMD_USER MD5 \"$USM_CMD_PW\" $PRIVPROTO \"$USM_CMD_PW\" >> $conf
+    echo "authUser log $USM_CMD_USER" >> $conf
+    echo [snmp] $LOGTIMESTAMP >> $conf
+}
+
+create_snmp_conf ()
+{
+    $NOTE $FUNCNAME
+    local conf=$1
+
+    echo -e "# $conf\n" > $conf
+    [ "$IPv4" = "yes" ] && [ "$EXTRA" = "yes" ] && [ $USE_SRCADDR = no ] && echo "clientaddr $CLIENTADDR4" >> $conf
+    [ "$IPv6" = "yes" ] && [ "$EXTRA" = "yes" ] && [ $USE_SRCADDR = no ] && echo "clientaddr $CLIENTADDR6" >> $conf
+    echo "defCommunity public" >> $conf
+    echo $LOGTIMESTAMP >> $conf
+}
+
+SNMPENV=$TESTDIR/snmpenv
+export_env ()
+{
+    $NOTE $FUNCNAME
+
+    echo "export SNMP_PERSISTENT_DIR=$TESTDIR/persist" > $SNMPENV
+    echo "export SNMPCONFPATH=$TESTDIR:$SNMP_PERSISTENT_DIR" >> $SNMPENV
+    source $SNMPENV
+    mkdir -p $SNMP_PERSISTENT_DIR
+}
+
+set_servers()
+{
+    local trap_lo_servers=()
+    local trap_dev0_servers=()
+    local trap_extra_servers=()
+
+    SNMPD_SERVERS=()
+    SNMPTRAPD_SERVERS=()
+    REMOTETRAPSERVERS=()
+
+    # Always enable ipv4 server
+    SNMPD_SERVERS+=("udp:$IPv4_HOST:$SNMPD_PORT")
+
+    if [ "$IPv4" = "yes" ]; then
+	SNMPTRAPD_SERVERS+=("udp:$SNMPTRAPD_PORT")
+	REMOTETRAPSERVERS+=("$REMOTE_IPv4:$SNMPTRAPD_PORT")
+
+	trap_lo_servers+=("udp:$IPv4_LO:$SNMPTRAPD_PORT")
+	trap_dev0_servers+=("udp:$IPv4_DEV0:$SNMPTRAPD_PORT")
+	if [ "$EXTRA" = "yes" ]; then
+	    [ "$SNMPVERSION" != "5.8" ] && SNMPD_SERVERS+=("udp:$IPv4_EXTRA:$SNMPD_PORT")
+	    trap_extra_servers+=("udp:$IPv4_EXTRA:$SNMPTRAPD_PORT")
+	fi
+    fi
+
+    if [ "$IPv6" = "yes" ]; then
+	SNMPD_SERVERS+=("udp6:[$IPv6_HOST]:$SNMPD_PORT")
+	SNMPTRAPD_SERVERS+=("udp6:$SNMPTRAPD_PORT")
+	REMOTETRAPSERVERS+=("udp6:[$REMOTE_IPv6]:$SNMPTRAPD_PORT")
+
+	trap_lo_servers+=("udp6:[$IPv6_LO]:$SNMPTRAPD_PORT")
+	trap_dev0_servers+=("udp6:[$IPv6_DEV0]:$SNMPTRAPD_PORT")
+	if [ "$EXTRA" = "yes" ]; then
+	    [ "$SNMPVERSION" != "5.8" ] && SNMPD_SERVERS+=("udp6:[$IPv6_EXTRA]:$SNMPD_PORT")
+	    trap_extra_servers+=("udp6:[$IPv6_EXTRA]:$SNMPTRAPD_PORT")
+	fi
+    fi
+
+    TRAPSERVERS=("${trap_lo_servers[@]}")
+    TRAPSERVERS+=("${trap_dev0_servers[@]}")
+    TRAPSERVERS+=("${trap_extra_servers[@]}")
+}
+
+snmp_start () {
+    if [ "$DEBUG" = "yes" ]; then
+	#local snmpd_debug="-Dtrap,sess_process_packet,snmptrapd,transport,netsnmp_udp,netsnmp_udpbase,netsnmp_udp6,AW -d"
+	#local snmptrapd_debug="-Dtrap,usm,sess_process_packet,snmptrapd,AW -d"
+	local snmptrapd_debug="-DALL -d"
+	local snmpd_debug="-DALL -d"
+    fi
+
+    $NOTE $FUNCNAME
+    echo '/tmp/core.%e.%p' > /proc/sys/kernel/core_pattern
+    ulimit -c unlimited
+
+    echo "snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[*]}"
+    snmptrapd -C -c $SNMPTRAPD_CONF -Lf $SNMPTRAPD_LOG -p $SNMPTRAPD_PID $snmptrapd_debug ${SNMPTRAPD_SERVERS[*]}
+    echo "snmpd -V -a -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[*]}"
+    snmpd -C -c $SNMPD_CONF -Lf $SNMPD_LOG -p $SNMPD_PID $snmpd_debug ${SNMPD_SERVERS[*]}
+    sleep 2
+}
+
+TCPDUMP_CAP=$TESTDIR/tcpdump.pcap
+tcpdump_capture ()
+{
+    local interface=$1
+    local rotate_seconds=$2
+    local filecount=1
+    if [ "$TCPDUMP" = "yes" ]; then
+	tcpdump -G $rotate_seconds -W $filecount -w $TCPDUMP_CAP -i $interface &
+	sleep 1
+    fi
+}
+
+tcpdump_read ()
+{
+    if [ "$TCPDUMP" = "yes" ]; then
+	sleep $1
+	# workaround: need a last package to close the tcpdump capture
+	ping6 -c 1 ::1 >/dev/null
+	tcpdump -T snmp -r $TCPDUMP_CAP	port $SNMPD_PORT or port $SNMPTRAPD_PORT
+    fi
+}
+
+TCPDUMP_REMOTE_CAP=/tmp/tcpdump_remote.cap
+snmp_inform () {
+    local host=$1
+#    local inform_debug="-Lf $SNMPINFORM_LOG -DALL -d"
+
+    $NOTE "INFORM $host"
+    $BASH "snmpinform $inform_debug -e $USM_CMD_EID -v 3 -a MD5 -A $USM_CMD_PW -x $PRIVPROTO -X $USM_CMD_PW -l authPriv -u $USM_CMD_USER $host \"\" $TRAP_OID $OID i 444"
+}
+
+snmp_trap () {
+    local host=$1
+#    local trap_debug="-Lf $SNMPTRAP_LOG -DALL -d"
+
+    if [ $USE_SRCADDR = yes ]; then
+	[ "$IPv4" = "yes" ] && [ "$EXTRA" = "yes" ] && srcaddr="-s $CLIENTADDR4"
+	[ "$IPv6" = "yes" ] && [ "$EXTRA" = "yes" ] && srcaddr="-s $CLIENTADDR6"
+    fi
+
+    $NOTE "TRAP $host"
+    $BASH "snmptrap $trap_debug $srcaddr -e $USM_CMD_EID -v 3 -a MD5 -A $USM_CMD_PW -x $PRIVPROTO -X $USM_CMD_PW -l authPriv -u $USM_CMD_USER $host \"\" $TRAP_OID $OID i 333"
+}
+
+snmp_trap_check () {
+    sleep 0.3
+    if [ ! -e $SNMPTRAPD_LOG.prev ]; then
+	grep -B 1 $OID $SNMPTRAPD_LOG
+    else
+	diff --changed-group-format='%<%>' --unchanged-group-format='' $SNMPTRAPD_LOG $SNMPTRAPD_LOG.prev | grep -B 1 $OID
+    fi
+    if [ $? != 0 ]; then
+	trap_fails=$((trap_fails+1))
+    fi
+    cp $SNMPTRAPD_LOG $SNMPTRAPD_LOG.prev
+    trap_counts=$((trap_counts+1))
+}
+
+snmp_trap_remote_check () {
+    sleep 0.3
+    scp -q $REMOTE_IPv4:$SNMPTRAPD_LOG $SNMPTRAPD_LOG.remote
+    if [ ! -e $SNMPTRAPD_LOG.remote.prev ]; then
+	grep -B 1 $OID $SNMPTRAPD_LOG.remote
+    else
+	diff --changed-group-format='%<%>' --unchanged-group-format='' $SNMPTRAPD_LOG.remote $SNMPTRAPD_LOG.remote.prev | grep -B 1 $OID
+    fi
+    if [ $? != 0 ]; then
+	remote_trap_fails=$((remote_trap_fails+1))
+    fi
+    cp $SNMPTRAPD_LOG.remote $SNMPTRAPD_LOG.remote.prev
+    remote_trap_counts=$((remote_trap_counts+1))
+}
+
+snmp_trap_ip ()
+{
+    local host=$1
+
+    snmp_trap $host
+    snmp_trap_check
+}
+
+snmp_inform_ip ()
+{
+    local host=$1
+
+    snmp_inform $host
+    snmp_trap_check
+}
+
+remote_snmp_trap_ip ()
+{
+    local host=$1
+
+    snmp_trap $host
+    snmp_trap_remote_check
+}
+
+remote_snmp_inform_ip ()
+{
+    local host=$1
+#    local inform_debug="-Lf $SNMPINFORM_LOG.remote -DALL -d"
+
+    snmp_inform $host
+    snmp_trap_remote_check
+}
+
+f_trap()
+{
+    tcpdump_capture any 4
+    for server in ${TRAPSERVERS[*]}; do
+	snmp_trap_ip $server
+	[ "$INFORM" = "yes" ] && snmp_inform_ip $server
+    done
+    tcpdump_read 4
+    if [ "$REMOTE" = "yes" ]; then
+	tcpdump_capture any 4
+	for server in ${REMOTETRAPSERVERS[*]}; do
+	    remote_snmp_trap_ip $server
+	    [ "$INFORM" = "yes" ] && remote_snmp_inform_ip $server
+	done
+	tcpdump_read 4
+    fi
+}
+
+usage()
+{
+    echo -e "\n$(basename $0) -h -c -C \n"
+    echo -e " -c   clean: stop snmp servers and remove tmp directory before running the test"
+    echo -e ""
+    echo -e "use ENV variables to configure test"
+    echo -n " TRAP=$TRAP"
+    echo -n " USE_SNMPDTRAP=$USE_SNMPDTRAP"
+    echo -n " IPv4=$IPv4"
+    echo -n " IPv6=$IPv6"
+    echo -n " TCPDUMP=$TCPDUMP"
+    echo -n " REMOTE=$REMOTE"
+    echo -n " DEBUG=$DEBUG"
+    echo -n " EXTRA=$EXTRA"
+    echo -n " USE_SRCADDR=$USE_SRCADDR"
+    echo -e " $0"
+    echo -e "\n SNMPVERSION=$SNMPVERSION"
+}
+
+###########################################
+# main
+
+while getopts "ch" opt; do
+    case $opt in
+	c)
+	    snmp_kill
+	    rm -rf $TESTDIR
+	    ;;
+	h)
+	    usage
+	    exit 0
+	    ;;
+	*)
+	    usage
+	    exit 0
+	    ;;
+
+    esac
+done
+shift $((OPTIND-1))
+
+$NOTE "$(date)"
+
+snmp_kill
+set_servers
+prepare
+snmp_start
+
+[ "$TRAP" = "yes" ] && f_trap
+
+echo -e "\n Result:"
+echo "  TRAP_ERRORS: $trap_fails ($trap_counts)"
+status=$((trap_fails))
+
+if [ "$REMOTE" = "yes" ]; then
+    echo "  REMOTE_TRAP_ERRORS: $remote_trap_fails ($remote_trap_counts)"
+    status=$((status + remote_trap_fails))
+fi
+exit $status
