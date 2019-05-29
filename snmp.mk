@@ -1,7 +1,7 @@
 # snmp.mk
 
 DISTRO			?= ubuntu
-DISTRO_TAG		?= 16.04
+DISTRO_TAG		?= 18.10
 DISTRO_TAGS		?= 16.04 18.10
 DISTRO_NAME		= $(DISTRO)_$(DISTRO_TAG)
 
