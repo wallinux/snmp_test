@@ -2,7 +2,7 @@
 
 DISTRO			?= ubuntu
 DISTRO_TAG		?= 18.10
-DISTRO_TAGS		?= 16.04 18.10
+DISTRO_TAGS		?= 16.04 18.10 19.04
 DISTRO_NAME		= $(DISTRO)_$(DISTRO_TAG)
 
 SNMP_REGISTRY_SERVER	= $(DOCKER_ID_USER)
@@ -229,14 +229,14 @@ distclean:: snmp.distclean
 snmp.help:
 	$(TRACE)
 	$(call run-help, snmp.mk)
-
-help:: snmp.help
 	$(GREEN)
 	$(ECHO) -e "\n-----------------------"
 	$(ECHO) -e "DISTRO=$(DISTRO)"
 	$(ECHO) -e "DISTRO_TAG=$(DISTRO_TAG), available DISTRO_TAGS=<$(DISTRO_TAGS)>"
 	$(ECHO) -e "SNMP_TAG=$(SNMP_TAG), available SNMP_TAGS=<$(SNMP_TAGS)>"
 	$(NORMAL)
+
+help:: snmp.help
 
 #############################################################
 aw.start:
