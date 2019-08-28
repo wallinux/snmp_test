@@ -136,7 +136,7 @@ snmp.START:  # Start ALL snmp containers
 
 snmp.stop.%:
 	$(TRACE)
-	$(DOCKER) stop $* || true
+	$(DOCKER) stop -t 2 $* || true
 	$(call rmstamp,snmp.start.$*)
 
 snmp.stop: # Stop snmp containers
@@ -237,26 +237,4 @@ snmp.help:
 	$(NORMAL)
 
 help:: snmp.help
-
-#############################################################
-aw.start:
-	$(eval container=latest.snmp_0_$(DISTRO_NAME))
-	$(DOCKER) create -P --name=$(container) \
-		-h $(container).eprime.com \
-		--network=$(DOCKER_NETWORK_1) \
-		--dns=8.8.8.8 \
-		-v $(SNMP_GITROOT):/root/snmp-test \
-		--privileged=true \
-		-i \
-		snmp_$(DISTRO_NAME):latest
-	$(DOCKER) start $(container)
-
-aw.shell:
-	$(eval container=latest.snmp_0_$(DISTRO_NAME))
-	$(MAKE) snmp.shell.$(container)
-
-aw.stop:
-	$(eval container=latest.snmp_0_$(DISTRO_NAME))
-	$(MAKE) snmp.stop.$(container)
-	$(MAKE) snmp.rm.$(container)
 
