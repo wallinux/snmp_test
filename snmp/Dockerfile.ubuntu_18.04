@@ -9,26 +9,51 @@ ENV DEBIAN_FRONTEND noninteractive
 
 # Preparing packages needed by snmp 
 RUN apt-get update
-RUN DEBIAN_FRONTEND=noninteractive; apt-get install -y apt-utils
-RUN DEBIAN_FRONTEND=noninteractive; apt-get install -y git libpopt-dev uuid-dev libxml2-dev automake autoconf libtool flex \
-	bison make libc6 libc6-dev libglib2.0-0 libglib2.0-dev libpopt-dev python-pip python-dev emacs tzdata tmux man libperl-dev
+RUN apt-get install -y apt-utils
+RUN apt-get install -y git libpopt-dev uuid-dev libxml2-dev automake autoconf libtool flex \
+    bison make libc6 libc6-dev libglib2.0-0 libglib2.0-dev libpopt-dev python-pip python-dev emacs tzdata tmux man libperl-dev
 
-# Installing snmp repos
-RUN (git clone git://git.code.sf.net/p/net-snmp/code net-snmp)
-RUN (cd net-snmp; git remote add wayline git://git.code.sf.net/u/wayline/net-snmp; git fetch --all)
+# Install snmp repos
+RUN git clone https://github.com/wallinux/net-snmp.git
 
-RUN DEBIAN_FRONTEND=noninteractive; apt-get install -y libssl-dev net-tools psmisc gdb strace tcpdump iputils-ping ssh sshpass tig doxygen iproute2 rsync smitools tree moreutils
+RUN apt-get install -y libssl-dev net-tools psmisc gdb strace tcpdump iputils-ping ssh sshpass tig doxygen iproute2 rsync smitools tree moreutils
 
-RUN (sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config)
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 RUN (echo root:root | chpasswd)
-RUN (mkdir /root/.ssh)
+RUN mkdir /root/.ssh
 RUN (echo "StrictHostKeyChecking no" > /root/.ssh/config)
 RUN (echo "UserKnownHostsFile=/dev/null" >> /root/.ssh/config)
 RUN (echo "LogLevel quiet" >> /root/.ssh/config)
 
-ADD snmp/.gitconfig /root/.gitconfig
-ADD snmp/.tmux.conf /root/.tmux.conf
-ADD snmp/build /root/build
+ADD .gitconfig /root/.gitconfig
+ADD .tmux.conf /root/.tmux.conf
+ADD build /root/build
+ADD codechecker /root/codechecker
 
 ENTRYPOINT ["/bin/bash"]
+
+# ADDING CODECHECKER
+###############################################################
+# add clang version 12
+RUN apt-get install -y software-properties-common
+RUN (wget https://apt.llvm.org/llvm.sh; chmod +x llvm.sh)
+RUN ./llvm.sh 12
+
+# Prepare for codechecker
+RUN apt-get install -y clang clang-tidy build-essential curl doxygen \
+    gcc-multilib git python-virtualenv python3-dev
+
+# add newer nodejs version
+RUN (curl -sL https://deb.nodesource.com/setup_12.x | bash -)
+RUN apt-get install -y nodejs
+
+# download codechecker
+RUN git clone https://github.com/Ericsson/CodeChecker.git /opt/codechecker
+RUN git -C /opt/codechecker/ checkout -b b6.14.0 v6.14.0
+
+# build codechecker
+RUN make -C /opt/codechecker venv
+RUN (. /opt/codechecker/venv/bin/activate; make -C /opt/codechecker package)
+###############################################################
+

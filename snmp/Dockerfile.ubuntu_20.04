@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM ubuntu:20.04
 MAINTAINER Anders Wallin
 
 WORKDIR /root
@@ -18,7 +18,7 @@ RUN git clone https://github.com/wallinux/net-snmp.git
 
 RUN apt-get install -y libssl-dev net-tools psmisc gdb strace tcpdump iputils-ping ssh sshpass tig doxygen iproute2 rsync smitools tree moreutils
 
-RUN sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 RUN (echo root:root | chpasswd)
 RUN mkdir /root/.ssh

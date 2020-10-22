@@ -8,6 +8,7 @@ DOCKER_ID_USER		= wallinux
 
 include network.mk
 include snmp.mk
+include codechecker.server.mk
 
 pull:: # Update all images
 	$(TRACE)

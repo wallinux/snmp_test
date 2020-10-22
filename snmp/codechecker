@@ -1,0 +1,34 @@
+#!/bin/bash
+
+cd /root/net-snmp
+git remote -v
+git branch
+BRANCHNAME=$(git rev-parse --symbolic-full-name --abbrev-ref HEAD)
+
+autoreconf
+./configure --prefix=/usr \
+		--with-persistent-directory=/var/lib/net-snmp \
+		--with-mib-modules='smux tlstm-mib tsm-mib examples/example examples/notification' \
+		--with-security-modules="tsm" \
+		--with-transports="TLSTCP DTLSUDP" \
+		--enable-shared \
+		--with-defaults \
+		--enable-ipv6 \
+		--with-cflags="-g -O2" \
+		--without-elf
+
+make clean
+source /opt/codechecker/venv/bin/activate
+export PATH=/opt/codechecker/build/CodeChecker/bin:$PATH
+
+echo "-*/conftest.c"    > codechecker.skipfile
+echo "-*/conftest.cpp" >> codechecker.skipfile
+echo "-*/tmp.*.c"      >> codechecker.skipfile
+
+CodeChecker log -o codechecker-log.json -b "make -j"
+CodeChecker analyze -j $(nproc) --clean --skip codechecker.skipfile -o ./results  --report-hash context-free-v2 codechecker-log.json
+#CodeChecker analyze -j $(nproc) --clean --skip codechecker.skipfile --ctu -e sensitive -o ./results  --report-hash context-free-v2 codechecker-log.json
+CodeChecker parse -e html ./results -o ./reports_html
+CodeChecker store -n ${BRANCHNAME} --trim-path-prefix=/root --url http://${HOSTIP}:8009/Default ./results
+
+exit 0
